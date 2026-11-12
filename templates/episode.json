@@ -1,0 +1,22 @@
+{
+  "title": "{Tên tập}",
+  "request": "{Yêu cầu nguyên gốc của người dùng}",
+  "mode": "original",
+  "status": "draft",
+  "source": null,
+  "slides": [
+    {
+      "text": "{Nội dung cuối của slide}",
+      "scene": "{Một hành động chính, vị trí nhân vật và vật thể}",
+      "scene_type": "concept",
+      "evidence": "{Căn cứ nguồn hoặc ghi đây là minh họa do Pi đề xuất}",
+      "characters": [
+        {
+          "id": "PHAT_01",
+          "version": "v1"
+        }
+      ],
+      "image": "drafts/{thu-muc-luot-ve}/image.jpg"
+    }
+  ]
+}

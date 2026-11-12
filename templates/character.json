@@ -1,0 +1,33 @@
+{
+  "id": "{ID}",
+  "name": "{Tên nhân vật}",
+  "aliases": [],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "{Khuôn mặt/tuổi biểu kiến/màu da}",
+    "hair": "{Tóc và đặc điểm đầu}",
+    "body": "{Vóc dáng và tỷ lệ}",
+    "clothing": "{Kiểu y phục, bên vai, màu và phụ kiện}"
+  },
+  "keep": [
+    "{Đặc điểm nhận diện không đổi}"
+  ],
+  "can_vary": [
+    "Tư thế",
+    "Hướng nhìn",
+    "Biểu cảm tiết chế"
+  ],
+  "avoid": [
+    "{Chi tiết không được xuất hiện}"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "ag/gemini-3.1-flash-image",
+    "note": "{Nguồn thiết kế và ảnh đầu vào; không khẳng định diện mạo lịch sử}"
+  },
+  "review_note": "Chưa được người dùng duyệt."
+}

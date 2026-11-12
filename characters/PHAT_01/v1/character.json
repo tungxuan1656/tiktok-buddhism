@@ -1,0 +1,43 @@
+{
+  "id": "PHAT_01",
+  "name": "Đức Phật (thiết kế minh họa)",
+  "aliases": [
+    "Đức Phật",
+    "Phật",
+    "Thế Tôn"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Mặt trái xoan, da sáng ấm, lông mày cong mảnh, mắt khép nhẹ, nét mặt điềm tĩnh, dái tai dài.",
+    "hair": "Tóc đen xoăn thành lọn nhỏ rõ nét, búi tóc tròn trên đỉnh đầu.",
+    "body": "Vóc dáng thanh vừa, tỷ lệ người trưởng thành, không cơ bắp quá mức.",
+    "clothing": "Y vàng đất/ochre, nếp vải mềm; phủ vai trái của nhân vật, vai phải để trần; không trang sức."
+  },
+  "keep": [
+    "Cùng khuôn mặt, dái tai dài và kiểu tóc xoăn/búi đỉnh đầu trong ảnh mẫu.",
+    "Cùng bảng màu y vàng đất, cùng cách phủ vai; không đổi sang y đỏ/rực.",
+    "Chất liệu 2D chì màu, nét mảnh, biểu cảm hiền hòa và tiết chế."
+  ],
+  "can_vary": [
+    "Ngồi, đứng hoặc đi theo cảnh",
+    "Hướng nhìn và tư thế tay tự nhiên",
+    "Biểu cảm nhẹ phù hợp cảnh"
+  ],
+  "avoid": [
+    "Râu hoặc ria mép",
+    "Vương miện, trang sức",
+    "Hào quang, bệ, cây hoặc vật phụ nếu cảnh không yêu cầu",
+    "Trình bày thiết kế này như diện mạo lịch sử đã được xác minh"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "existing_generated_candidate",
+    "model": "ag/gemini-3.1-flash-image",
+    "note": "Bản sao nguyên byte của PHAT_01-candidate-v1.jpg trong tập thử local-api-e2e-20261111-v1. Đăng ký làm mẫu generated theo quy trình mới, không sửa báo cáo gốc.",
+    "sha256": "2addb51cf2e11ceacb3aada93781f949d519e094fd796d7bf4877e22a9c9237d"
+  },
+  "review_note": "Chưa được người dùng duyệt. Ảnh mẫu định danh nhân vật; khi vẽ slide phải chừa vùng chữ theo style.md, không sao chép nguyên bố cục mẫu."
+}
