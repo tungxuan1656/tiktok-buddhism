@@ -5,8 +5,9 @@
 - Minh họa Phật giáo 2D; nét mảnh, chất liệu chì màu, vàng đất/nâu dịu.
   Không ảnh chụp, 3D, anime hoặc hiệu ứng bóng bẩy.
 - Nền trắng/giấy sáng, thoáng; biểu cảm trang nghiêm, hiền hòa, tiết chế.
-- Khung dọc 3:4; thành phẩm PNG **1080 × 1440**. API nhận `aspect_ratio: "3:4"`
-  nhưng kích thước thật có thể khác; fit + padding khi xuất, không crop/méo.
+- Khung dọc 3:4; thành phẩm PNG **1080 × 1440**. Gửi kích thước theo
+  [hướng dẫn API](painter-local-api.md), đo ảnh thật rồi fit + padding khi xuất,
+  không crop/méo; không mặc định model nào cũng nhận `aspect_ratio`.
 - **Bố cục linh hoạt theo nội dung**, không bắt buộc tỷ lệ vùng chữ/tranh hay
   vị trí trên/dưới cố định. Sắp xếp để tranh và chữ hiển thị đầy đủ, rõ ràng,
   cân đối; không che nhau hoặc bị cắt khỏi khung. Không thu nhỏ chữ để ép bố cục.

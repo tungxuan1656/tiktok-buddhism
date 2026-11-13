@@ -9,15 +9,25 @@ Không gọi API sinh ảnh chỉ để kiểm tra setup.
 | Mục | Giá trị |
 | --- | --- |
 | URL mặc định | `http://localhost:20128` |
-| Model | `ag/gemini-3.1-flash-image` |
+| Model | `cx/gpt-image-2.6-flare` |
 | Endpoint | `POST /v1/images/generations?response_format=binary` |
-| Request | JSON: `model`, `prompt`, `aspect_ratio`, `reference_images` |
-| Tỉ lệ slide | `aspect_ratio: "3:4"` |
-| Ảnh mẫu | Data URL có MIME thật, tối đa 10 ảnh |
+| Request | JSON: `model`, `prompt`, `size`, `images` |
+| Kích thước yêu cầu | `size: "1024x1536"` (dọc); đo kích thước ảnh trả về trước khi xuất |
+| Thành phẩm | PNG 1080 × 1440, khung 3:4; fit + padding, không crop/méo |
+| Ảnh mẫu | `images`: mảng Data URL có MIME thật, tối đa 10 ảnh trong workflow |
 | Khóa nếu server yêu cầu | Biến môi trường `NINEROUTER_KEY` |
 
-Đã có lần tạo thành công trên gateway này **không gửi Authorization**. Vì vậy
-không chặn từ đầu chỉ vì chưa có biến khóa. Nếu có `NINEROUTER_KEY`, gửi qua
+Model này dùng cho tạo mẫu nhân vật, slide và sửa ảnh. Theo
+[skill 9Router chính thức](https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-image/SKILL.md),
+nhánh Codex dùng `image` hoặc `images` cho ảnh đầu vào, `size` cho kích thước;
+không dùng lại `aspect_ratio`/`reference_images` của nhánh Gemini cũ.
+Không tự thêm các tham số tùy chọn hoặc đổi model khi gặp lỗi. Giữ nguyên
+ảnh mẫu/snapshot đã chốt và provenance của ảnh cũ, không tự vẽ lại nhân vật.
+Skill nêu nhánh Codex cần ChatGPT Plus/Pro; metadata không xác nhận quyền hay
+khả năng tạo ảnh thực tế của tài khoản. Thiếu quyền thì dừng, không tự mua gói.
+
+Đã có lần tạo thành công với model cũ trên gateway này **không gửi Authorization**.
+Vì vậy không chặn từ đầu chỉ vì chưa có biến khóa. Nếu có `NINEROUTER_KEY`, gửi qua
 header. Nếu server hiện trả 401/403, dừng và yêu cầu cấp khóa qua kênh bí mật;
 không dò tìm bí mật, đổi cấu hình xác thực hoặc tự chuyển provider.
 
@@ -67,10 +77,10 @@ Authorization. Khóa từng lộ trong chat cần được người dùng thay m
     printf '\n' >> "$work/references.txt"
   done
   jq -n --rawfile prompt "$prompt_file" --rawfile refs "$work/references.txt" '{
-    model: "ag/gemini-3.1-flash-image",
+    model: "cx/gpt-image-2.6-flare",
     prompt: $prompt,
-    aspect_ratio: "3:4",
-    reference_images: ($refs | split("\n") | map(select(length > 0)))
+    size: "1024x1536",
+    images: ($refs | split("\n") | map(select(length > 0)))
   }' > "$work/request.json"
 
   # Pass the optional secret via stdin, never curl arguments or saved headers.
@@ -102,10 +112,10 @@ cách, hoặc cảnh thực sự không cần ảnh tham chiếu. Với nhân v�
 `references/user-style-v1/example-01-original.png` làm **ảnh phong cách**.
 Ghi rõ vai trò đó để model không sao chép chữ/người phụ trong ảnh.
 
-Gateway có thể bỏ qua ảnh không hợp lệ hoặc chỉ nhận 10 ảnh đầu. Kiểm tra số
-lượng, giải mã Data URL đối chiếu ảnh gốc khi có nghi ngờ; request thành công
-không chứng minh model đã giữ đúng mặt. Data URL phải đúng MIME thực, không
-base64 thô bị mặc định nhầm PNG.
+Giữ tối đa 10 ảnh tham chiếu theo workflow; không suy ra model chắc chắn nhận
+đủ mọi ảnh chỉ từ HTTP 200. Kiểm tra số lượng, giải mã Data URL đối chiếu ảnh
+gốc khi có nghi ngờ; ảnh trả về phải giữ đúng mặt. Data URL phải đúng MIME
+thực, không base64 thô bị mặc định nhầm PNG.
 
 ## Sau khi nhận ảnh
 
@@ -158,7 +168,7 @@ sẵn có khác nếu bảo đảm không crop/méo; không cài hoặc thêm re
 | Lỗi | Xử lý |
 | --- | --- |
 | 401/403 | Dừng, xin cấp khóa an toàn; không in khóa, không thử lách xác thực |
-| 400/model | Xem `/v1/models/image` và `/v1/models/info?id=ag%2Fgemini-3.1-flash-image`; không đổi model ngầm |
+| 400/model | Xem `/v1/models/image` và `/v1/models/info?id=cx%2Fgpt-image-2.6-flare`; đối chiếu skill 9Router, không đổi model ngầm |
 | 503 | Báo tài khoản/provider chưa sẵn sàng; không tự thêm tài khoản |
 | Timeout/mất kết nối | Lưu request, báo trạng thái chưa biết; kiểm tra server trước khi gửi lại |
 | JSON/HTML thay vì ảnh | Dừng và đọc lỗi an toàn; không coi là ảnh |
@@ -169,6 +179,11 @@ Không thêm retry tự động. Trả rõ phần nào đã làm, phần nào b�
 
 ## Bằng chứng và giới hạn đã biết
 
+- Ngày 2026-11-13, GET metadata local xác nhận `cx/gpt-image-2.6-flare` là
+  model `image`, endpoint `/v1/images/generations`, có `text2img`, `edit`,
+  `multiImage` và tham số `size`. Đây chỉ là kiểm tra metadata; chưa gọi tạo
+  ảnh bằng model mới, chưa xác minh chất lượng chữ/nhân vật, kích thước hoặc
+  số ảnh tham chiếu upstream thực sự chấp nhận.
 - Lần thử 2026-11-11 tại `episodes/local-api-e2e-20261111-v1/` có request,
   response và báo cáo. Ảnh phong cách trong Data URL khớp file gốc; prompt
   khớp file đã lưu; đầu ra JPEG **896 × 1200** dù header ghi `image/png`.
@@ -178,10 +193,10 @@ Không thêm retry tự động. Trả rõ phần nào đã làm, phần nào b�
   không sửa báo cáo cũ và không coi là người dùng đã duyệt.
 - Ảnh mèo thử cũ được giữ nguyên bytes tại
   [archive/cat-api-original.jpg](archive/cat-api-original.jpg), JPEG 1024 × 1024.
-- Trước đây đã đối chiếu nhánh `antigravity` của 9Router local: đọc
-  `aspect_ratio`, xử lý `reference_images` thành `inlineData`. Không suy diễn
-  các trường `quality`, `background`, `watermark`, `output_format` của provider
-  khác sang model này. Không dùng chúng làm bằng chứng điều khiển đầu ra.
-- Nguồn tham khảo: [9router-image skill](https://github.com/decolua/9router/blob/master/skills/9router-image/SKILL.md).
+- Với model cũ `ag/gemini-3.1-flash-image`, đã đối chiếu nhánh `antigravity`
+  của 9Router local: đọc `aspect_ratio`, xử lý `reference_images` thành
+  `inlineData`. Đây là bằng chứng lịch sử, không chứng minh cách nhánh Codex
+  xử lý ảnh. Không suy diễn các tham số hoặc khả năng giữa hai nhánh.
+- Nguồn tham khảo hiện hành: [9router-image skill](https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-image/SKILL.md).
   API local có thể thay đổi theo bản cài; khi kết quả khác tài liệu, kiểm tra
   bản thực tế thay vì tuyên bố đã xác minh lại upstream.

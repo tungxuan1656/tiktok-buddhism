@@ -47,7 +47,7 @@ sửa và tải ảnh đăng TikTok. Máy chạy Pi và 9Router phải còn bậ
 ## Đã có sẵn
 
 - Phong cách, ảnh ví dụ gốc và API local tại `http://localhost:20128`,
-  model `ag/gemini-3.1-flash-image`.
+  model tạo ảnh `cx/gpt-image-2.6-flare`.
 - Mẫu `PHAT_01/v1` từ ảnh thử sẵn có, trạng thái `generated`: dùng được
   theo quy trình này, chưa có nghĩa bạn đã duyệt. Bạn có thể yêu cầu đổi.
 - Prompt yêu cầu chữ chính xác và checklist để Pi đọc/so lại ảnh thật.

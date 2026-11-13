@@ -45,5 +45,5 @@ Không thêm người, vật thể, hành động, hào quang hoặc hiệu ứn
 Pi tự đọc lại từng dòng trên ảnh sau khi nhận. Khi sửa: nêu rõ chữ nào đang sai,
 đưa lại **toàn bộ text đúng**, yêu cầu giữ phong cách/cảnh/nhân vật. Gửi lại mẫu
 nhân vật và có thể kèm ảnh nháp với vai trò bố cục cần sửa, không coi nháp là
-nhân vật mới. Tối đa 10 ảnh tham chiếu theo gateway. Không dùng ghép chữ phần
+nhân vật mới. Tối đa 10 ảnh tham chiếu trong workflow. Không dùng ghép chữ phần
 mềm như phương án thay thế khi người dùng chưa yêu cầu.
