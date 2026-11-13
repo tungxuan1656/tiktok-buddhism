@@ -2,7 +2,7 @@
 
 Đây là khung cho **một nhân vật**, không phải cảnh kinh. Không gửi nguyên mẫu
 khi chưa điền. Tạo ảnh chân dung/đủ thân rõ diện mạo để dùng làm tham chiếu.
-Không cần chừa 35% vùng chữ vì đây là ảnh mẫu, không phải slide.
+Ảnh mẫu không chữ, ưu tiên nhìn rõ diện mạo và trang phục nhân vật.
 
 ---
 

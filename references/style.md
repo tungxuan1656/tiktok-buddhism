@@ -7,8 +7,9 @@
 - Nền trắng/giấy sáng, thoáng; biểu cảm trang nghiêm, hiền hòa, tiết chế.
 - Khung dọc 3:4; thành phẩm PNG **1080 × 1440**. API nhận `aspect_ratio: "3:4"`
   nhưng kích thước thật có thể khác; fit + padding khi xuất, không crop/méo.
-- **35% trên dành cho chữ, phần dưới dành cho tranh.** Tranh ưu tiên nửa dưới,
-  không người/cành cây/hào quang lấn vùng chữ. Mẫu nhân vật không cần bố cục này.
+- **Bố cục linh hoạt theo nội dung**, không bắt buộc tỷ lệ vùng chữ/tranh hay
+  vị trí trên/dưới cố định. Sắp xếp để tranh và chữ hiển thị đầy đủ, rõ ràng,
+  cân đối; không che nhau hoặc bị cắt khỏi khung. Không thu nhỏ chữ để ép bố cục.
 - Một cảnh dễ đọc, ít chi tiết; không khung, bong bóng thoại, logo/watermark.
   Không tự thêm cây, hào quang, bệ đá chỉ vì ảnh ví dụ có chúng.
 - Mặt, tóc, tỷ lệ, y phục theo JSON và ảnh mẫu đúng phiên bản. Được đổi tư thế
@@ -34,6 +35,7 @@ cục. Không lấy chữ trong ảnh làm nguồn kinh hoặc sao chép mọi �
 Ảnh gốc 765 × 1024 không phải kích thước đầu ra.
 
 [Hồ sơ gốc](user-style-v1/README.md) được giữ nguyên để truy nguyên. Các quy tắc
-cũ “minh họa không chữ”, “ghép chữ riêng” và “duyệt mẫu trước” **không còn là quy
-trình hiện hành**. AGENTS/WORKFLOW hiện tại thực hiện lựa chọn mới của người dùng:
+cũ “minh họa không chữ”, “ghép chữ riêng”, “duyệt mẫu trước” và chia vùng
+chữ/tranh theo tỷ lệ cố định **không còn là yêu cầu hiện hành**.
+AGENTS/WORKFLOW hiện tại thực hiện lựa chọn mới của người dùng:
 AI tạo cả tranh/chữ, Pi tự đọc ảnh, người dùng xem thành phẩm cuối lượt.

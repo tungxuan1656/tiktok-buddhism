@@ -11,8 +11,10 @@ Tranh 2D nét mảnh với chất liệu chì màu, màu vàng đất/nâu dịu
 tối giản, biểu cảm trang nghiêm và hiền hòa. Không ảnh chụp, 3D hoặc anime.
 Không khung, bong bóng thoại, logo, watermark hoặc chữ trang trí.
 
-Bố cục: 35% phía trên dành cho chữ, minh họa tập trung phía dưới.
-Không để người/cành cây/hào quang lấn hoặc che chữ. Chữ nâu sẫm gần #4B2F1E,
+Bố cục linh hoạt theo nội dung, không chia vùng chữ/tranh theo tỷ lệ hoặc vị
+trí trên/dưới cố định. Sắp xếp tranh và chữ đầy đủ, rõ ràng, cân đối, không
+che nhau hoặc bị cắt khỏi khung. Không thu nhỏ chữ để ép bố cục.
+Chữ nâu sẫm gần #4B2F1E,
 canh giữa, nét rõ mềm, cùng kiểu chữ với các slide trước trong tập nếu có ảnh
 tham chiếu bố cục. Cỡ chữ dễ đọc trên điện thoại, lề thoáng; không chữ bé li ti.
 

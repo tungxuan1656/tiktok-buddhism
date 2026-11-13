@@ -57,7 +57,9 @@ chỉ định nét/màu; không thay thế ảnh định danh nhân vật.
 
 Dùng [prompt slide](prompts/illustration.md) và [hướng dẫn API](references/painter-local-api.md).
 Điền hết chỗ giữ chỗ, gửi đúng text và đủ ảnh tham chiếu thực theo thứ tự đã ghi.
-Không gửi toàn bộ nguồn khi chỉ cần chữ của một trang.
+Không gửi toàn bộ nguồn khi chỉ cần chữ của một trang. Bố cục linh hoạt theo
+nội dung, không bắt buộc tỷ lệ vùng chữ/tranh hoặc vị trí trên/dưới cố định;
+ưu tiên tranh và chữ đầy đủ, rõ ràng, dễ đọc.
 
 Tạo từng trang rồi **mở ảnh ngay** để tránh nhân lỗi qua cả tập. Lưu request,
 prompt, phản hồi gốc, MIME/kích thước thật và ảnh vào drafts. Điền đường dẫn
@@ -69,7 +71,8 @@ Mở ảnh đầy đủ, rồi phóng to/crop vùng chữ nếu cần. Đọc t�
 với `text`, không kiểm tra dựa vào việc prompt đã gửi đúng:
 
 - Đúng từng từ, dấu tiếng Việt/dấu câu, không thiếu câu, lặp chữ hoặc thêm chữ.
-- Không chữ rác, tiêu đề phụ, watermark; chữ rõ trên điện thoại, không đè tranh.
+- Tranh và chữ đầy đủ, rõ trên điện thoại, bố cục phù hợp; không che nhau
+  hoặc bị cắt. Không chữ rác, tiêu đề phụ, watermark.
 - Mặt, tóc, tỷ lệ, y phục đúng mẫu; số người, hành động, tay/chân và bối cảnh đúng.
 - Nếu đọc không chắc, đánh dấu chưa đạt, không tự đoán hoặc coi OCR là chứng cứ
   tuyệt đối. Có thể dùng OCR hỗ trợ nếu sẵn có, nhưng vẫn xem ảnh thật.

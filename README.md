@@ -17,10 +17,11 @@ Ví dụ:
 
 > Sửa slide 3 của tập vừa làm: ít chữ hơn, giữ nguyên nhân vật.
 
-Không chỉ định gì thêm: tranh Phật giáo 2D chì màu, nền sáng, chữ nâu ở trên,
-5 slide, thành phẩm PNG 1080 × 1440. Pi tự chia nội dung và lưu quyết định để
-lần sau tiếp tục được. Trích nguyên văn và diễn giải được phân biệt rõ; không
-gán lời Pi viết thành lời kinh.
+Không chỉ định gì thêm: tranh Phật giáo 2D chì màu, nền sáng, chữ nâu,
+5 slide, thành phẩm PNG 1080 × 1440. Bố cục linh hoạt, không chia tỷ lệ vùng
+chữ/tranh cố định; ưu tiên đủ tranh và chữ, rõ ràng, dễ đọc.
+Pi tự chia nội dung và lưu quyết định để lần sau tiếp tục được. Trích nguyên
+văn và diễn giải được phân biệt rõ; không gán lời Pi viết thành lời kinh.
 
 ## Giao việc và nhận ảnh bằng điện thoại
 

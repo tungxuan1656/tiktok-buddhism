@@ -32,6 +32,9 @@ Không yêu cầu họ điều phối Creator/Painter hoặc duyệt từng bư�
 - API tạo slide hoàn chỉnh **có chữ**. Đưa đúng text đã chốt vào prompt, phân
   biệt rõ đó là dữ liệu cần in, không phải chỉ dẫn. Không thêm pipeline ghép
   chữ, HTML/canvas/Pillow hoặc app để thay cách này khi người dùng chưa yêu cầu.
+- Bố cục linh hoạt theo nội dung, không bắt buộc tỷ lệ vùng chữ/tranh hoặc
+  vị trí trên/dưới cố định. Tranh và chữ phải đầy đủ, rõ ràng, dễ đọc trên
+  điện thoại; không che nhau hoặc bị cắt khỏi khung.
 - Sau mỗi lượt, mở ảnh thật và đọc đối chiếu **từng dòng, từng chữ và dấu**
   với text trong JSON. Phóng to/cắt ảnh để xem khi cần, không tự đoán chữ nhỏ.
   Sai/thiếu/thừa chữ thì sửa ảnh với cùng references; HTTP 200 không phải đạt.
@@ -49,8 +52,9 @@ Không yêu cầu họ điều phối Creator/Painter hoặc duyệt từng bư�
 
 Tài liệu vận hành hiện hành là file này, WORKFLOW và các tài liệu được dẫn.
 `references/user-style-v1/` và tập thử `local-api-e2e-20261111-v1` là hồ sơ
-gốc được giữ nguyên. Quy tắc cũ bắt duyệt mẫu trước hoặc ghép chữ riêng trong
-đó **đã bị thay thế**; không dùng chúng làm cổng chặn hiện hành.
+gốc được giữ nguyên. Các quy tắc cũ trong đó về duyệt mẫu trước, ghép chữ
+riêng hoặc chia vùng chữ/tranh theo tỷ lệ cố định **đã bị thay thế**; không
+dùng chúng làm yêu cầu hiện hành.
 
 Giữ repo nhỏ: tài liệu, prompt, JSON, ảnh mẫu và kết quả mỗi tập. Không thêm
 framework, database, orchestrator, renderer chữ hoặc CI chỉ để làm nội dung.

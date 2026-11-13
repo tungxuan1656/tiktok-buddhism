@@ -22,7 +22,7 @@ thành phần khi thực sự cần. Dùng [mẫu JSON](../templates/character.j
    Không chọn `retired`. Đừng chọn theo thứ tự chữ (`v10` phải sau `v9`).
 3. Không có mẫu: tự thiết kế theo [prompt](../prompts/character.md), xem ảnh,
    ghi ngoại hình thực, lưu `generated` rồi tiếp tục làm slide. Không chờ người
-   dùng duyệt nhân vật. Ảnh mẫu không cần bố cục chừa vùng chữ như slide.
+   dùng duyệt nhân vật. Ảnh mẫu không chữ, ưu tiên nhìn rõ diện mạo và trang phục.
 4. Mỗi request vẽ/sửa gửi lại ảnh thật và `identity`/`keep`. Giữ khuôn mặt,
    tóc, tỷ lệ và trang phục; chỉ đổi những gì `can_vary` cho phép.
 5. Người dùng đổi thiết kế: tạo phiên bản mới, không ghi đè ảnh cũ. Ghi rõ
