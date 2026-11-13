@@ -9,6 +9,8 @@ một lần nhận yêu cầu, một lần bàn giao; không chèn duyệt kịc
   snapshot đã có. Ghi phản hồi và quyết định vào `notes.md`.
 - Tạo `episodes/<ngày>-<tên-ngắn>/`, trùng thì thêm hậu tố, không ghi đè.
   Lưu yêu cầu nguyên gốc; dùng [mẫu tập](templates/episode.json) tạo `episode.json`.
+  Qua Telegram, dùng nguyên `episode_dir` do bridge cấp thay vì tự đặt thư mục.
+  [Giao thức bridge](bridge/agent.md) bổ sung handoff, không thay các bước này.
 - Mặc định 5 trang, mỗi trang một ý, khoảng 20–40 từ dễ đọc. Đoạn dài thì
   thêm trang hoặc rút gọn khi được diễn giải, không nhồi chữ để đủ 5 trang.
 
@@ -89,7 +91,10 @@ PNG cuối** để chắc không mờ/chặt chữ sau đổi kích thước.
 Lưu `output/r01/001.png`… và snapshot `episode.json` của revision. Ghi kết quả
 tự kiểm tra/giới hạn vào notes, đặt `ready_for_review` chỉ khi đủ trang đã đạt.
 Đưa ảnh trong chat nếu hỗ trợ và đường dẫn tuyệt đối. Không giả vờ đã đính kèm
-nếu giao diện chỉ có đường dẫn, không tự gửi qua dịch vụ khác.
+nếu giao diện chỉ có đường dẫn, không tự gửi qua dịch vụ khác. Với tác vụ
+Telegram đã được giao, Pi ghi manifest theo [bridge/agent.md](bridge/agent.md);
+bridge kiểm tra và gửi PNG gốc về đúng private chat chủ bot. Không dùng việc
+gửi thành công hoặc agent_settled làm bằng chứng đã đạt chất lượng.
 
 Người dùng sửa: giữ bản cũ, chỉ tạo lại trang cần sửa, dùng cùng references,
 xuất revision mới. Text đổi thì cần sửa ảnh vì chữ do model tạo, không có bước

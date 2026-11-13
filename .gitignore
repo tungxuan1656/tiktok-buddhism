@@ -8,3 +8,5 @@ __pycache__/
 !.env.example
 episodes/*
 !episodes/README.md
+node_modules/
+.telegram/

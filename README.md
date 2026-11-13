@@ -22,6 +22,13 @@ Không chỉ định gì thêm: tranh Phật giáo 2D chì màu, nền sáng, ch
 lần sau tiếp tục được. Trích nguyên văn và diễn giải được phân biệt rõ; không
 gán lời Pi viết thành lời kinh.
 
+## Giao việc và nhận ảnh bằng điện thoại
+
+Đã có [cầu nối Telegram](bridge/README.md): tin nhắn của bạn → Pi RPC →
+PNG gốc gửi về private chat. Pi vẫn tự làm trọn bộ, không duyệt trung gian.
+Cần cấu hình bot một lần trên máy; sau đó dùng điện thoại để giao việc, yêu cầu
+sửa và tải ảnh đăng TikTok. Máy chạy Pi và 9Router phải còn bật, không ngủ.
+
 ## Repo nhớ những gì?
 
 | Nơi lưu | Vai trò |
@@ -34,6 +41,7 @@ gán lời Pi viết thành lời kinh.
 | [characters/](characters/README.md) | Hồ sơ JSON và ảnh nhận diện dùng lại giữa các tập |
 | [episodes/](episodes/README.md) | Nội dung, request, ảnh nháp, kết quả và phản hồi mỗi tập |
 | [templates/](templates/README.md) | Mẫu JSON cho Pi điền, không phải nội dung sản xuất |
+| [bridge/](bridge/README.md) | Telegram một chủ bot, RPC, lưu task/session và bàn giao có phục hồi |
 
 ## Đã có sẵn
 
@@ -61,7 +69,9 @@ Pi đưa ảnh trong phiên chat nếu giao diện hỗ trợ, nếu không sẽ
 
 Kho `characters/` được lưu trong Git cùng repo khi bạn yêu cầu commit.
 Dữ liệu `episodes/` mặc định không commit: sao lưu riêng khi chuyển máy.
-Không có tự đăng TikTok hoặc dịch vụ chạy nền.
+Không có tự đăng TikTok. Cách dùng Pi trực tiếp không cần dịch vụ chạy nền;
+Telegram cần chạy bridge theo hướng dẫn riêng. Sao lưu thêm `.telegram/` nếu
+muốn giữ ánh xạ hội thoại, tiến độ bàn giao và các phiên Pi qua bot.
 
 AI có thể vẽ sai chữ và lệch nhân vật. Việc Pi tự đọc ảnh là kiểm tra thị giác,
 không phải bảo đảm tuyệt đối hoặc chứng minh đúng từng byte Unicode. Nếu chữ

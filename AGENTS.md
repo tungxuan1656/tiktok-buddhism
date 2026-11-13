@@ -16,7 +16,8 @@ Không yêu cầu họ điều phối Creator/Painter hoặc duyệt từng bư�
 
 - Người dùng giao làm/sửa slide là đã giao bạn lên kịch bản, tự tạo mẫu còn
   thiếu và gọi API cho công việc đó. Không gọi API chỉ để đọc/test repo.
-  Không cần app, server mới hoặc workflow nhiều agent.
+  Không cần app, server mới hoặc workflow nhiều agent để làm nội dung.
+  Cầu nối Telegram đã được yêu cầu riêng: xem [bridge/README.md](bridge/README.md).
 - Nếu đủ rõ, làm ngay. Mặc định 5 slide, tự điều chỉnh nếu nội dung không vừa.
   Chỉ hỏi khi thiếu nội dung, không xác định được người/nguồn cần trích chính
   xác, thiếu quyền/truy cập cần thiết hoặc API bị chặn.
@@ -38,7 +39,9 @@ Không yêu cầu họ điều phối Creator/Painter hoặc duyệt từng bư�
   model vẽ sai. Không sửa biên bản duyệt hoặc duyệt thay người dùng.
 - Tự kiểm tra đủ rồi bàn giao `ready_for_review` với ảnh và đường dẫn.
   Chỉ `approved` khi người dùng xác nhận đúng revision. Không tự đăng hoặc
-  gửi sang kênh/tài khoản bên ngoài. Không tự mua/thêm dịch vụ, đổi provider.
+  gửi sang kênh/tài khoản bên ngoài. Ngoại lệ đã được người dùng giao: bridge
+  được gửi PNG của tác vụ Telegram về đúng private chat chủ bot đã cấu hình;
+  Pi không tự gọi Telegram hay chọn người nhận. Không tự mua/thêm dịch vụ, đổi provider.
 - Không tìm/in/lưu khóa bí mật. Không retry khi timeout vì có thể tạo trùng.
   Dừng đúng lỗi, báo phần còn thiếu, không giả vờ đã hoàn thành.
 
@@ -51,6 +54,8 @@ gốc được giữ nguyên. Quy tắc cũ bắt duyệt mẫu trước hoặc 
 
 Giữ repo nhỏ: tài liệu, prompt, JSON, ảnh mẫu và kết quả mỗi tập. Không thêm
 framework, database, orchestrator, renderer chữ hoặc CI chỉ để làm nội dung.
+`bridge/` là adapter Telegram mỏng đã được yêu cầu, dùng Pi RPC, SQLite chuẩn
+của Node và thư mục artifact; không chuyển nghiệp vụ sáng tác sang service.
 Khi sửa tài liệu, kiểm tra link, JSON và đường dẫn. Không commit `.env` hoặc
 dữ liệu tập mặc định. Kiểm tra thị giác không chứng minh đúng từng byte Unicode,
 quyền dùng nguồn hoặc diện mạo lịch sử; đừng đưa ra cam kết vượt bằng chứng.

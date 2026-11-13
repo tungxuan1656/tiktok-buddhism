@@ -29,6 +29,12 @@ từ ảnh model tạo sai.
 - Lưu kết quả tự kiểm tra từng trang vào notes: chữ, nhân vật, bố cục, lỗi/lượt
   sửa, đường dẫn PNG đã xem. Không gọi tập thiếu ảnh/ảnh lỗi là hoàn thành.
 - Đưa ảnh/đường dẫn trực tiếp trong phiên Pi, không tự đăng/gửi dịch vụ khác.
+  Ngoại lệ tác vụ Telegram: bridge gửi PNG gốc về đúng private chat chủ bot
+  sau khi kiểm tra manifest; không mở quyền gửi tới người nhận khác.
+
+Tác vụ Telegram dùng `telegram-<task-id>/` với cấu trúc trên và thêm
+`handoff/<run-id>/request.json`, `result.json` cho giao tiếp máy đọc. Session
+và tiến độ gửi nằm riêng trong `.telegram/`; xem [bridge](../bridge/README.md).
 
 Dữ liệu tập bị Git bỏ qua mặc định: sao lưu riêng khi chuyển máy. Git không
 khôi phục được file chưa commit; không dọn/xóa dữ liệu tùy tiện. Giữ nguyên tập
