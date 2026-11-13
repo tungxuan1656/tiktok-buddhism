@@ -35,7 +35,7 @@ async function main() {
     if (check) {
       const client = await runner.connect('telegram-readiness-check');
       const state = await client.getState();
-      console.log(`Node + SQLite + ImageMagick + Pi RPC: OK. Model đã chọn: ${state.model ? 'có' : 'chưa'}.`);
+      console.log(`Node + SQLite + ImageMagick + Pi RPC: OK. Model: ${state.model ? `${state.model.provider}/${state.model.id}` : 'chưa chọn'}; thinking: ${state.thinkingLevel}.`);
       console.log(configured ? 'Cấu hình Telegram: có (chưa gọi Telegram/model/image API).' : 'Thiếu TELEGRAM_BOT_TOKEN hoặc TELEGRAM_USER_ID; xem bridge/README.md.');
       if (!configured) process.exitCode = 2;
       return;

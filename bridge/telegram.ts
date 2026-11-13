@@ -47,6 +47,12 @@ export class Telegram {
   async say(text: string) {
     await this.call('sendMessage', { chat_id: this.owner, text: text.slice(0, 4000) });
   }
+  async trace(text: string, message?: number): Promise<number> {
+    const result = await this.call<{ message_id: number }>(message ? 'editMessageText' : 'sendMessage',
+      { chat_id: this.owner, text, ...(message ? { message_id: message } : {}) }, 10_000);
+    if (!Number.isSafeInteger(result?.message_id)) throw new TelegramError(true);
+    return result.message_id;
+  }
   async send(bytes: Uint8Array, name: string, caption: string): Promise<number> {
     const data = new FormData();
     data.set('chat_id', String(this.owner));

@@ -21,8 +21,10 @@ class FakeTelegram extends Telegram {
   texts: string[] = [];
   sent: string[] = [];
   sendHook?: () => Promise<void>;
+  traces: string[] = [];
   constructor() { super('not-a-real-token', 123); }
   override async say(text: string) { this.texts.push(text); }
+  override async trace(text: string, message?: number) { this.traces.push(text); return message ?? 100; }
   override async send(bytes: Uint8Array, name: string) {
     await this.sendHook?.();
     this.sent.push(`${name}:${hash(bytes)}`);
@@ -248,4 +250,41 @@ test('Telegram transport never exposes token in errors and distinguishes definit
   await assert.rejects(network.say('hello'), error => error instanceof TelegramError && error.ambiguous && !String(error).includes(token));
   const rejected = new Telegram(token, 123, async () => new Response(JSON.stringify({ ok: false, parameters: { retry_after: 3 } }), { status: 429 }));
   await assert.rejects(rejected.say('hello'), error => error instanceof TelegramError && !error.ambiguous && error.retryAfter === 3);
+});
+
+
+test('trace commands work while Pi is busy, respect owner auth and show only the latest ten lines', async t => {
+  const { bridge, runner, telegram, store } = await setup(t);
+  const entered = deferred();
+  const release = deferred();
+  runner.hook = async () => {
+    for (let i = 0; i < 30; i++) bridge.trace.add(`safe event ${i}`);
+    entered.resolve();
+    await release.promise;
+  };
+  runner.cancelHook = async () => { release.resolve(); };
+  await bridge.receive(message(1, '/trace on', 999));
+  assert.equal(bridge.trace.enabled(), false);
+  await bridge.receive(message(2, '/trace on'));
+  assert.equal(bridge.trace.enabled(), true);
+  await bridge.receive(message(3, 'start a task'));
+  await entered.promise;
+  await bridge.receive(message(4, '/log'));
+  const log = telegram.texts.at(-1)!;
+  assert.equal(log.split('\n').length, 10);
+  assert.match(log, /safe event 20/);
+  assert.match(log, /safe event 29/);
+  assert.equal(runner.calls.length, 1);
+  assert.equal(store.current()!.state, 'running');
+  await bridge.receive(message(5, '/trace off', 123, 'group'));
+  assert.equal(bridge.trace.enabled(), true);
+  await bridge.receive(message(6, '/trace off'));
+  assert.equal(bridge.trace.enabled(), false);
+  const edits = telegram.traces.length;
+  bridge.trace.add('one more safe event');
+  await bridge.trace.flush();
+  assert.equal(telegram.traces.length, edits);
+  await bridge.receive(message(7, '/trace'));
+  assert.match(telegram.texts.at(-1)!, /one more safe event/);
+  await bridge.receive(message(8, '/cancel'));
 });

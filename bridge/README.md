@@ -30,11 +30,19 @@ chmod 600 .env
    prompt model, gọi Telegram hoặc tạo ảnh. Exit 2 nghĩa thiếu cấu hình bot.
 6. Chờ tin “Bridge sẵn sàng” trên điện thoại, nhắn yêu cầu làm slide.
 
-Có thể đặt `PI_MODEL=provider/model` trong `.env`; không đặt thì dùng model
-mặc định đã cấu hình trong Pi. Bridge dùng CLI/auth/model của Pi nhưng tắt
-extension, MCP, skill và prompt template tự nạp, chỉ bật read/bash/edit/write;
-AGENTS.md và hướng dẫn nội dung vẫn được nạp. Pi child không nhận biến
-`TELEGRAM_*`. Chạy trực tiếp Pi như trước không bị thay đổi.
+Bot được ghim vào **`cx/gpt-6.1-sol`**, provider **`9router`**, thinking
+**`xhigh`**; không còn dùng `PI_MODEL` hoặc model mặc định để chọn ngầm.
+[model.ts](model.ts) chỉ bổ sung metadata `xhigh` cho bản sao model trong
+session bot vì alias local hiện chỉ khai báo đến `high`. Giữ nguyên endpoint,
+auth, các model khác và mặc định Pi toàn cục; không thay provider. Mỗi lần mở
+session, RPC phải xác nhận đúng model và `xhigh`, sai thì dừng trước prompt,
+không tự hạ xuống `high`. `npm run check` in lựa chọn hiệu lực này, không
+chứng minh upstream đã chấp nhận một request thực với `xhigh`.
+
+Bridge tắt extension, MCP, skill và prompt template tự nạp; chỉ nạp extension
+model nói trên và bật read/bash/edit/write. AGENTS.md và hướng dẫn nội dung vẫn
+được nạp. Pi child không nhận biến `TELEGRAM_*`. Chạy trực tiếp Pi như trước
+không bị thay đổi.
 
 Bot chỉ chấp nhận đồng thời `from.id == chat.id == TELEGRAM_USER_ID` và
 `chat.type == private`; nhóm, người lạ, bot khác không được giao việc. Bot
@@ -50,6 +58,9 @@ và gửi **document PNG**, đúng thứ tự, để tải bản gốc. Chỉ h�
 | Lệnh | Ý nghĩa |
 | --- | --- |
 | `/status` | Task hiện tại, giai đoạn gần nhất, số tin chờ/giữ lại và file gửi thiếu/lỗi |
+| `/trace on` | Theo dõi trực tiếp bằng một tin nhắn được cập nhật, tối đa 10 dòng mới nhất |
+| `/trace off` | Tắt cập nhật trực tiếp, vẫn giữ bộ đệm log |
+| `/log` hoặc `/trace` | Xem ngay 10 dòng mới nhất, kể cả khi Pi đang chạy |
 | `/cancel` | Dừng lượt đang làm/gửi; giữ dữ liệu và các tin bổ sung, không tự chạy lại |
 | `/done` | Kết thúc tập hiện tại; tập tiếp theo vẫn dùng hội thoại Pi này |
 | `/new` | Mở hội thoại Pi và tập mới; không xóa ảnh hoặc lịch sử cũ |
@@ -66,6 +77,18 @@ rồi nhắn lại yêu cầu đã đủ thông tin. Tin chờ bị giữ (`held
 phục hồi run gián đoạn; không tự phát lại. Tin vẫn trong lịch sử Telegram/SQLite;
 bạn gửi lại phần còn muốn làm. Tin trạng thái có thể mất nếu mạng lỗi; ảnh có
 sổ bàn giao riêng. `/status` không phát lại raw log, prompt hay khóa.
+
+Trace mặc định tắt; `/trace on` bật cho đến khi bạn tắt (lưu qua restart).
+Log luôn chỉ giữ **10 dòng mới nhất của lượt hiện tại** trong SQLite, mỗi dòng
+có giờ và độ dài giới hạn. Sự kiện dồn nhanh được gộp, cập nhật khoảng 3 giây
+một lần và khi lượt kết thúc; không gửi một tin mới cho mỗi tool. Bật/tắt bình
+thường dùng lại tin theo dõi; restart hoặc bật lại sau lỗi mạng tạo tin mới.
+Bắt đầu lượt mới sẽ xóa bộ đệm lượt trước.
+Chỉ hiện trạng thái Pi, tên tool, một số tên file quen thuộc và tiến độ gửi ảnh;
+không gửi lệnh bash, đầu ra tool, nội dung tệp, prompt hoặc nội dung suy luận.
+Đây là log sự kiện thực, không phải bản sao transcript hoặc bằng chứng chất lượng.
+Nếu Telegram không xác nhận cập nhật, trace live tự tắt, không retry mù;
+`/log` vẫn xem được, `/trace on` để chủ động bật lại.
 
 `ready_for_review` nghĩa Pi báo đã kiểm tra, chưa có nghĩa bạn đã duyệt.
 Bridge không suy ra chất lượng từ `agent_settled` hay chữ “done”. Bạn tự xem
@@ -145,7 +168,9 @@ npm run check
 Test dùng SQLite thật, subprocess RPC giả và PNG trắng tạo cục bộ trong thư
 mục tạm; không gọi Telegram, model hoặc API tạo ảnh. Bao phủ private owner,
 nhận trùng, session/task, revision, hủy/khởi động lại, upload chưa rõ, resend,
-đường dẫn/symlink, file ảnh, đóng băng outbox và khóa tiến trình đồng thời.
+đường dẫn/symlink, file ảnh, đóng băng outbox, khóa tiến trình đồng thời và trace
+10 dòng (quyền truy cập, gộp/edit tin nhắn, ẩn nội dung nhạy cảm, lỗi mạng),
+metadata model `xhigh` chỉ trong session bot, không thay provider/mặc định.
 `npm run check` kiểm tra RPC thật nhưng không chứng minh model có thể trả lời
 hay 9Router vẽ được; cần thử một yêu cầu thực từ điện thoại để xác nhận đầu-cuối.
 
