@@ -20,7 +20,8 @@ thành phần khi thực sự cần. Dùng [mẫu JSON](../templates/character.j
 2. Với tập mới không chỉ định: chọn phiên bản số lớn nhất có trạng thái
    `user_approved`; nếu chưa có, chọn phiên bản số lớn nhất `generated`.
    Không chọn `retired`. Đừng chọn theo thứ tự chữ (`v10` phải sau `v9`).
-3. Không có mẫu: tự thiết kế theo [prompt](../prompts/character.md), xem ảnh,
+3. Không có mẫu: tự thiết kế theo [prompt](../prompts/character.md) bằng
+   [wrapper API](../references/painter-local-api.md), xem JPEG95 sau nén,
    ghi ngoại hình thực, lưu `generated` rồi tiếp tục làm slide. Không chờ người
    dùng duyệt nhân vật. Ảnh mẫu không chữ, ưu tiên nhìn rõ diện mạo và trang phục.
 4. Mỗi request vẽ/sửa gửi lại ảnh thật và `identity`/`keep`. Giữ khuôn mặt,

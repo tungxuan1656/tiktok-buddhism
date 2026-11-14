@@ -17,7 +17,16 @@ process.stdin.on('data', chunk => {
     if (command.type === 'prompt') {
       if (command.message === 'handled') data = { disposition: 'handled' };
       else if (command.message === 'hold') { data = { disposition: 'started' }; emit({ type: 'tool_execution_start', toolName: 'read' }); }
-      else { data = { disposition: 'started' }; emit({ type: 'agent_settled', aborted: false }); }
+      else {
+        data = { disposition: 'started' };
+        if (['json-error', 'provider-error', 'recovered'].includes(command.message)) {
+          emit({ type: 'message_end', message: { role: 'assistant', content: [], stopReason: 'error', errorMessage: command.message === 'json-error'
+            ? '9router API error (400): {"message":"Invalid JSON body"} EXAMPLE_PRIVATE_VALUE'
+            : '9router API error (503): EXAMPLE_PRIVATE_VALUE' } });
+        }
+        if (command.message === 'recovered') emit({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'Recovered' }], stopReason: 'stop' } });
+        emit({ type: 'agent_settled', aborted: false });
+      }
     }
     emit({ type: 'response', id: command.id, command: command.type, success: true, data });
     if (command.type === 'abort') emit({ type: 'agent_settled', aborted: true });

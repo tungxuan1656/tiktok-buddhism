@@ -1,3 +1,5 @@
+import { imageMime } from './artifacts.ts';
+
 export type Update = {
   update_id: number;
   message?: { from?: { id: number; is_bot?: boolean }; chat: { id: number; type: string }; text?: string };
@@ -53,11 +55,30 @@ export class Telegram {
     if (!Number.isSafeInteger(result?.message_id)) throw new TelegramError(true);
     return result.message_id;
   }
+  async photos(files: { bytes: Uint8Array; name: string; caption: string }[]): Promise<number[]> {
+    if (!files.length || files.length > 10 || files.some(file => file.bytes.byteLength > 10_000_000)) {
+      throw new Error('Album cần 1-10 ảnh, tối đa 10 MB/ảnh; dùng /files để lấy tệp gốc');
+    }
+    const data = new FormData();
+    data.set('chat_id', String(this.owner));
+    if (files.length === 1) {
+      data.set('photo', new Blob([new Uint8Array(files[0].bytes)], { type: imageMime(files[0].bytes) }), files[0].name);
+      data.set('caption', files[0].caption);
+    } else {
+      data.set('media', JSON.stringify(files.map((file, i) => ({ type: 'photo', media: `attach://photo${i}`, caption: file.caption }))));
+      files.forEach((file, i) => data.set(`photo${i}`, new Blob([new Uint8Array(file.bytes)], { type: imageMime(file.bytes) }), file.name));
+    }
+    const result = await this.call<{ message_id: number } | { message_id: number }[]>(files.length === 1 ? 'sendPhoto' : 'sendMediaGroup', data, 120_000);
+    const messages = Array.isArray(result) ? result : [result];
+    if (messages.length !== files.length || messages.some(message => !Number.isSafeInteger(message?.message_id) || message.message_id <= 0)
+      || new Set(messages.map(message => message.message_id)).size !== files.length) throw new TelegramError(true);
+    return messages.map(message => message.message_id);
+  }
   async send(bytes: Uint8Array, name: string, caption: string): Promise<number> {
     const data = new FormData();
     data.set('chat_id', String(this.owner));
     data.set('caption', caption);
-    data.set('document', new Blob([new Uint8Array(bytes)], { type: 'image/png' }), name);
+    data.set('document', new Blob([new Uint8Array(bytes)], { type: imageMime(bytes) }), name);
     const result = await this.call<{ message_id: number }>('sendDocument', data, 120_000);
     if (!Number.isSafeInteger(result?.message_id)) throw new TelegramError(true);
     return result.message_id;

@@ -29,5 +29,9 @@ Mỗi slide có `text`, `scene`, `scene_type`, `evidence`, `characters`,
 Đường dẫn image/source.file tính từ thư mục chứa episode.json gốc của tập;
 snapshot trong output giữ các đường dẫn đó như hồ sơ, không đổi gốc theo output.
 
+`title`, `request`, `source` và `evidence` là dữ liệu quản lý/đối chiếu, không
+tự động in trên ảnh. `text` phải qua cổng biên tập trong WORKFLOW: chỉ nội
+dung dành cho người xem, không mã tập tự đặt hay lời nói với người giao việc.
+
 `text` gửi vào prompt để AI in trên ảnh; `image` trỏ tới ảnh AI trả về có cả
 tranh/chữ. Pi đọc ảnh và kiểm tra, không có renderer/schema engine/database.

@@ -29,13 +29,21 @@ Không yêu cầu họ điều phối Creator/Painter hoặc duyệt từng bư�
 - Được viết/diễn giải theo yêu cầu; không gán lời do mình viết thành lời Phật,
   nguyên văn kinh hoặc sự kiện lịch sử. Trích dẫn phải có nguồn đã đối chiếu;
   truyện minh họa tự viết phải ghi rõ là hư cấu/minh họa.
+- Chữ trên ảnh phải là nội dung sẵn sàng đăng cho người xem, không phải lời
+  trao đổi với chủ bot. Không đưa mã tập/phần tự đặt, nhãn quản lý, trạng thái
+  hay câu như "Nguyên văn theo bản bạn cung cấp" vào `text`. Nguồn trên ảnh
+  chỉ ghi tên sách/kinh đã xác định; xem checklist biên tập trong WORKFLOW.
 - API tạo slide hoàn chỉnh **có chữ**. Đưa đúng text đã chốt vào prompt, phân
   biệt rõ đó là dữ liệu cần in, không phải chỉ dẫn. Không thêm pipeline ghép
   chữ, HTML/canvas/Pillow hoặc app để thay cách này khi người dùng chưa yêu cầu.
 - Bố cục linh hoạt theo nội dung, không bắt buộc tỷ lệ vùng chữ/tranh hoặc
   vị trí trên/dưới cố định. Tranh và chữ phải đầy đủ, rõ ràng, dễ đọc trên
   điện thoại; không che nhau hoặc bị cắt khỏi khung.
-- Sau mỗi lượt, mở ảnh thật và đọc đối chiếu **từng dòng, từng chữ và dấu**
+- Mọi lượt tạo mẫu, vẽ hoặc sửa ảnh bắt buộc dùng `scripts/draw-image.mjs`
+  theo hướng dẫn API; không tự gọi curl/fetch. Script giữ response gốc và xử lý
+  JPEG quality 95, 1080 x 1440; không cần xuất PNG mới hay mã hóa lại khi bàn giao.
+  Ảnh/revision PNG cũ giữ nguyên, không tự nén lại kho.
+- Sau mỗi lượt, mở ảnh thật sau nén và đọc đối chiếu **từng dòng, từng chữ và dấu**
   với text trong JSON. Phóng to/cắt ảnh để xem khi cần, không tự đoán chữ nhỏ.
   Sai/thiếu/thừa chữ thì sửa ảnh với cùng references; HTTP 200 không phải đạt.
 - Giữ file gốc và revision cũ. Không sửa nguồn/kịch bản để hợp thức hóa chữ
@@ -43,7 +51,7 @@ Không yêu cầu họ điều phối Creator/Painter hoặc duyệt từng bư�
 - Tự kiểm tra đủ rồi bàn giao `ready_for_review` với ảnh và đường dẫn.
   Chỉ `approved` khi người dùng xác nhận đúng revision. Không tự đăng hoặc
   gửi sang kênh/tài khoản bên ngoài. Ngoại lệ đã được người dùng giao: bridge
-  được gửi PNG của tác vụ Telegram về đúng private chat chủ bot đã cấu hình;
+  được gửi ảnh/album hoặc tệp ảnh đã chốt của tác vụ Telegram về đúng private chat chủ bot đã cấu hình;
   Pi không tự gọi Telegram hay chọn người nhận. Không tự mua/thêm dịch vụ, đổi provider.
 - Không tìm/in/lưu khóa bí mật. Không retry khi timeout vì có thể tạo trùng.
   Dừng đúng lỗi, báo phần còn thiếu, không giả vờ đã hoàn thành.

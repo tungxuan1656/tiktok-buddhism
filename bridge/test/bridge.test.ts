@@ -8,8 +8,9 @@ import { Store } from '../store.ts';
 import type { Run } from '../store.ts';
 import { Bridge } from '../bridge.ts';
 import { Telegram, TelegramError } from '../telegram.ts';
+import { PiFailure } from '../pi.ts';
 import type { Runner } from '../pi.ts';
-import { collect, hash } from '../artifacts.ts';
+import { collect, hash, imageBytes } from '../artifacts.ts';
 
 const message = (id: number, text: string, owner = 123, type = 'private') => ({ update_id: id, message: { from: { id: owner }, chat: { id: owner, type }, text } });
 const deferred = () => {
@@ -20,13 +21,21 @@ const deferred = () => {
 class FakeTelegram extends Telegram {
   texts: string[] = [];
   sent: string[] = [];
+  albums: string[][] = [];
+  documents: string[] = [];
   sendHook?: () => Promise<void>;
   traces: string[] = [];
   constructor() { super('not-a-real-token', 123); }
   override async say(text: string) { this.texts.push(text); }
   override async trace(text: string, message?: number) { this.traces.push(text); return message ?? 100; }
+  override async photos(files: { bytes: Uint8Array; name: string; caption: string }[]) {
+    await this.sendHook?.();
+    this.albums.push(files.map(file => file.name));
+    return files.map(file => { this.sent.push(`${file.name}:${hash(file.bytes)}`); return this.sent.length; });
+  }
   override async send(bytes: Uint8Array, name: string) {
     await this.sendHook?.();
+    this.documents.push(name);
     this.sent.push(`${name}:${hash(bytes)}`);
     return this.sent.length;
   }
@@ -50,14 +59,14 @@ async function setup(t: test.TestContext) {
   t.after(async () => { await bridge.shutdown(); store.db.close(); await rm(root, { recursive: true, force: true }); });
   return { root, stateDir, store, telegram, runner, bridge };
 }
-async function fixture(store: Store, count = 2, revision = 'r01') {
+async function fixture(store: Store, count = 2, revision = 'r01', extension = 'png') {
   const task = store.current()!;
   const run = store.db.prepare('SELECT * FROM runs ORDER BY rowid DESC LIMIT 1').get() as Run;
   const dir = join(task.dir, 'output', revision);
   const report = { task_id: task.id, run_id: run.id, status: 'ready_for_review', checked: true, revision, message: 'Đã kiểm tra.', files: [] as string[] };
   await mkdir(dir, { recursive: true });
   for (let i = 1; i <= count; i++) {
-    const name = `${String(i).padStart(3, '0')}.png`;
+    const name = `${String(i).padStart(3, '0')}.${extension}`;
     execFileSync('magick', ['-size', '1080x1440', `xc:${i % 2 ? 'white' : 'beige'}`, join(dir, name)]);
     report.files.push(`output/${revision}/${name}`);
   }
@@ -66,6 +75,27 @@ async function fixture(store: Store, count = 2, revision = 'r01') {
   return { task, run, report };
 }
 async function settled(bridge: Bridge) { await bridge.active?.promise; }
+
+test('failures keep a safe actionable cause in status and handoff without retrying Pi or images', async t => {
+  for (const failure of [new PiFailure('model_json', 'Model/API trả HTTP 400: Invalid JSON body.'), new PiFailure('timeout', 'Pi vượt giới hạn 2 giờ.'), new Error('EXAMPLE_PRIVATE_VALUE'), undefined]) {
+    const { bridge, runner, telegram, store } = await setup(t);
+    runner.hook = async () => { if (failure) throw failure; };
+    await bridge.receive(message(1, 'Tiếp tục tập')); await settled(bridge);
+    const task = store.current()!;
+    const run = store.db.prepare('SELECT * FROM runs').get() as Run;
+    const report = JSON.parse(await readFile(join(task.dir, 'handoff', run.id, 'failure.json'), 'utf8'));
+    assert.equal(report.run_id, run.id);
+    assert.equal(report.code, failure instanceof PiFailure ? failure.code : failure ? 'pi' : 'handoff');
+    assert.equal(run.state, 'interrupted');
+    assert.equal(task.state, 'needs_attention');
+    assert.ok(task.phase.includes(report.message));
+    assert.ok(telegram.texts.some(text => text.includes(`Nguyên nhân: ${report.message}`)));
+    assert.ok(!JSON.stringify([report, task, telegram.texts]).includes('EXAMPLE_PRIVATE_VALUE'));
+    assert.equal(runner.calls.length, 1);
+    assert.equal(telegram.sent.length, 0);
+    assert.equal(store.deliveries().length, 0);
+  }
+});
 
 test('only configured private owner is accepted; duplicate updates never generate again', async t => {
   const { bridge, store, runner, telegram } = await setup(t);
@@ -85,6 +115,9 @@ test('only configured private owner is accepted; duplicate updates never generat
   assert.match(telegram.sent[0], /^001.png:/);
   assert.match(telegram.sent[1], /^002.png:/);
   assert.equal(store.deliveries()[0].message, 1);
+  assert.equal(store.deliveries()[1].message, 2);
+  assert.deepEqual(telegram.albums, [['001.png', '002.png']]);
+  assert.deepEqual(telegram.documents, []);
 });
 
 test('ordinary follow-ups reuse task/session; /done keeps session; /new changes it without deleting old files', async t => {
@@ -147,7 +180,7 @@ test('ambiguous Telegram send stops ordered delivery; /resend sends stored bytes
   runner.hook = async () => { await fixture(store); };
   telegram.sendHook = async () => { throw new TelegramError(true); };
   await bridge.receive(message(1, 'Tập')); await settled(bridge);
-  assert.deepEqual(store.deliveries().map(f => f.state), ['unknown', 'pending']);
+  assert.deepEqual(store.deliveries().map(f => f.state), ['unknown', 'unknown']);
   await bridge.tick(); await settled(bridge);
   assert.equal(telegram.sent.length, 0);
   telegram.sendHook = undefined;
@@ -156,18 +189,18 @@ test('ambiguous Telegram send stops ordered delivery; /resend sends stored bytes
   assert.equal(runner.calls.length, 1);
 });
 
-test('cancel while an upload is in flight records its acknowledgement but never sends next page', async t => {
+test('cancel while an album is in flight records the whole acknowledgement but never sends next batch', async t => {
   const { bridge, store, runner, telegram } = await setup(t);
   const sending = deferred(); const release = deferred();
-  runner.hook = async () => { await fixture(store); };
+  runner.hook = async () => { await fixture(store, 11); };
   telegram.sendHook = async () => { sending.resolve(); await release.promise; };
   await bridge.receive(message(1, 'Tập')); await sending.promise;
   const cancellation = bridge.receive(message(2, '/cancel'));
   assert.equal((store.db.prepare('SELECT state FROM runs').get() as { state: string }).state, 'ready');
   release.resolve(); await cancellation;
-  assert.equal(telegram.sent.length, 1);
+  assert.equal(telegram.sent.length, 10);
   assert.equal(store.current()!.state, 'cancelled');
-  assert.equal(store.deliveries()[1].state, 'cancelled');
+  assert.deepEqual(store.deliveries().map(file => file.state), [...Array(10).fill('sent'), 'cancelled']);
 });
 
 test('recovery preserves a committed revision even if a crash left its run cancelling', async t => {
@@ -201,6 +234,100 @@ test('shutdown during an ambiguous upload preserves committed revision for resen
   await next.receive(message(2, '/resend')); await settled(next);
   assert.equal(nextTelegram.sent.length, 2);
   assert.equal(nextRunner.calls.length, 0);
+});
+
+test('crash recovery marks the entire in-flight album unknown and waits for explicit resend', async t => {
+  const { bridge, store, runner, telegram } = await setup(t);
+  runner.hook = async () => { await fixture(store); };
+  await bridge.receive(message(1, 'Tập')); await settled(bridge);
+  store.db.prepare("UPDATE deliveries SET state='sending',message=NULL").run();
+  store.recover();
+  assert.deepEqual(store.deliveries().map(file => file.state), ['unknown', 'unknown']);
+  await bridge.tick(); await settled(bridge);
+  assert.equal(telegram.albums.length, 1);
+  await bridge.receive(message(2, '/resend')); await settled(bridge);
+  assert.equal(telegram.albums.length, 2);
+  assert.equal(runner.calls.length, 1);
+  assert.ok(store.deliveries().every(file => file.state === 'sent'));
+});
+
+test('photo delivery splits eleven slides into an ordered album and one photo', async t => {
+  const { bridge, store, runner, telegram } = await setup(t);
+  runner.hook = async () => { await fixture(store, 11); };
+  await bridge.receive(message(1, 'Tập 11 trang')); await settled(bridge);
+  assert.deepEqual(telegram.albums.map(album => album.length), [10, 1]);
+  assert.equal(telegram.albums[0][9], '010.png');
+  assert.deepEqual(telegram.albums[1], ['011.png']);
+  assert.ok(store.deliveries().every(file => file.state === 'sent'));
+});
+
+test('/files sends only the latest revision as original documents; /resend keeps that format without Pi', async t => {
+  const { bridge, store, runner, telegram } = await setup(t);
+  let revision = 0;
+  runner.hook = async () => { await fixture(store, 2, `r0${++revision}`); };
+  await bridge.receive(message(1, 'Tập')); await settled(bridge);
+  await bridge.receive(message(2, 'Sửa')); await settled(bridge);
+  const originals = store.deliveries().map(file => file.hash);
+  await bridge.receive(message(3, '/files', 999));
+  assert.deepEqual(telegram.documents, []);
+  let attempts = 0;
+  telegram.sendHook = async () => { if (++attempts === 2) throw new TelegramError(true); };
+  await bridge.receive(message(4, '/files')); await settled(bridge);
+  assert.deepEqual(store.deliveries().map(file => file.state), ['sent', 'sent', 'sent', 'unknown']);
+  store.recover();
+  telegram.sendHook = undefined;
+  await bridge.receive(message(5, '/resend')); await settled(bridge);
+  await bridge.receive(message(5, '/resend'));
+  assert.deepEqual(telegram.documents, ['001.png', '002.png']);
+  assert.equal(telegram.albums.length, 2);
+  assert.equal(runner.calls.length, 2);
+  assert.deepEqual(store.deliveries().map(file => file.hash), originals);
+  assert.ok(store.deliveries().every(file => file.state === 'sent'));
+});
+
+test('a changed file blocks the whole album before any new upload', async t => {
+  const { bridge, store, runner, telegram } = await setup(t);
+  runner.hook = async () => { await fixture(store); };
+  await bridge.receive(message(1, 'Tập')); await settled(bridge);
+  await writeFile(store.deliveries()[1].path, 'tampered');
+  store.db.prepare("UPDATE deliveries SET state='pending',message=NULL").run();
+  await bridge.tick(); await settled(bridge);
+  assert.equal(telegram.albums.length, 1);
+  assert.deepEqual(store.deliveries().map(file => file.state), ['failed', 'failed']);
+  assert.equal(runner.calls.length, 1);
+});
+
+test('pending pre-album runs keep document delivery after upgrade', async t => {
+  const { bridge, store, runner, telegram } = await setup(t);
+  runner.hook = async () => { await fixture(store); };
+  await bridge.receive(message(1, 'Tập')); await settled(bridge);
+  const run = store.deliveries()[0].run;
+  store.db.prepare('DELETE FROM meta WHERE key=?').run(`delivery_format:${run}`);
+  store.db.prepare("UPDATE deliveries SET state='pending',message=NULL").run();
+  await bridge.tick(); await settled(bridge);
+  assert.deepEqual(telegram.documents, ['001.png', '002.png']);
+  assert.equal(telegram.albums.length, 1);
+  assert.equal(runner.calls.length, 1);
+});
+
+test('JPEG delivery preserves bytes and extension for albums and /files while rejecting disguised or wrong-sized images', async t => {
+  for (const extension of ['jpg', 'jpeg']) {
+    const { bridge, store, runner, telegram } = await setup(t);
+    runner.hook = async () => { await fixture(store, 2, 'r01', extension); };
+    await bridge.receive(message(1, 'JPEG mới')); await settled(bridge);
+    const names = [`001.${extension}`, `002.${extension}`];
+    assert.deepEqual(telegram.albums, [names]);
+    const file = store.deliveries()[0];
+    assert.equal(hash(await imageBytes(file.path)), file.hash);
+    await bridge.receive(message(2, '/files')); await settled(bridge);
+    assert.deepEqual(telegram.documents, names);
+    assert.equal(runner.calls.length, 1);
+    const disguised = file.path.replace(`.${extension}`, '.png');
+    await writeFile(disguised, await readFile(file.path));
+    await assert.rejects(imageBytes(disguised), /Đuôi file/);
+    execFileSync('magick', ['-size', '10x10', 'xc:white', file.path]);
+    await assert.rejects(imageBytes(file.path), /1080 x 1440/);
+  }
 });
 
 test('manifest rejects wrong run, outside paths, mismatched order, invalid PNG and immutable revision reuse', async t => {
@@ -253,6 +380,21 @@ test('Telegram transport never exposes token in errors and distinguishes definit
 });
 
 
+test('trace toggles use underscore commands, including Telegram bot suffixes, not the old spaced syntax', async t => {
+  const { bridge, runner, telegram } = await setup(t);
+  await bridge.receive(message(1, '/trace_on@txtiktokbuddhism_bot'));
+  assert.equal(bridge.trace.enabled(), true);
+  await bridge.receive(message(2, '/trace off'));
+  assert.equal(bridge.trace.enabled(), true);
+  assert.match(telegram.texts.at(-1)!, /\/trace_off:/);
+  await bridge.receive(message(3, '/trace_off@txtiktokbuddhism_bot'));
+  assert.equal(bridge.trace.enabled(), false);
+  await bridge.receive(message(4, '/trace on'));
+  assert.equal(bridge.trace.enabled(), false);
+  assert.match(telegram.texts.at(-1)!, /\/trace_on:/);
+  assert.equal(runner.calls.length, 0);
+});
+
 test('trace commands work while Pi is busy, respect owner auth and show only the latest ten lines', async t => {
   const { bridge, runner, telegram, store } = await setup(t);
   const entered = deferred();
@@ -263,9 +405,9 @@ test('trace commands work while Pi is busy, respect owner auth and show only the
     await release.promise;
   };
   runner.cancelHook = async () => { release.resolve(); };
-  await bridge.receive(message(1, '/trace on', 999));
+  await bridge.receive(message(1, '/trace_on', 999));
   assert.equal(bridge.trace.enabled(), false);
-  await bridge.receive(message(2, '/trace on'));
+  await bridge.receive(message(2, '/trace_on'));
   assert.equal(bridge.trace.enabled(), true);
   await bridge.receive(message(3, 'start a task'));
   await entered.promise;
@@ -276,15 +418,15 @@ test('trace commands work while Pi is busy, respect owner auth and show only the
   assert.match(log, /safe event 29/);
   assert.equal(runner.calls.length, 1);
   assert.equal(store.current()!.state, 'running');
-  await bridge.receive(message(5, '/trace off', 123, 'group'));
+  await bridge.receive(message(5, '/trace_off', 123, 'group'));
   assert.equal(bridge.trace.enabled(), true);
-  await bridge.receive(message(6, '/trace off'));
+  await bridge.receive(message(6, '/trace_off'));
   assert.equal(bridge.trace.enabled(), false);
   const edits = telegram.traces.length;
   bridge.trace.add('one more safe event');
   await bridge.trace.flush();
   assert.equal(telegram.traces.length, edits);
-  await bridge.receive(message(7, '/trace'));
+  await bridge.receive(message(7, '/log'));
   assert.match(telegram.texts.at(-1)!, /one more safe event/);
   await bridge.receive(message(8, '/cancel'));
 });

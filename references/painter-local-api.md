@@ -1,202 +1,133 @@
-# API ảnh — 9Router local
+# API ảnh — wrapper 9Router local
 
-Pi tự gọi API khi được giao làm/sửa slide, không cần chuyển việc sang bot khác.
+Pi gọi API khi được giao làm/sửa slide, không gọi chỉ để thử setup. **Mọi lượt
+tạo mẫu nhân vật, vẽ và sửa ảnh phải dùng [scripts/draw-image.mjs](../scripts/draw-image.mjs)**.
+Không tự viết lại curl/fetch, đổi provider hay bỏ qua bước xử lý ảnh trong script.
 Đọc [phong cách](style.md) và [prompt](../prompts/README.md) trước khi vẽ.
-Không gọi API sinh ảnh chỉ để kiểm tra setup.
 
 ## Cấu hình đang dùng
 
 | Mục | Giá trị |
 | --- | --- |
-| URL mặc định | `http://localhost:20128` |
+| URL cố định | `http://localhost:20128` |
 | Model | `cx/gpt-image-2.6-flare` |
 | Endpoint | `POST /v1/images/generations?response_format=binary` |
-| Request | JSON: `model`, `prompt`, `size`, `images` |
-| Kích thước yêu cầu | `size: "1024x1536"` (dọc); đo kích thước ảnh trả về trước khi xuất |
-| Thành phẩm | PNG 1080 × 1440, khung 3:4; fit + padding, không crop/méo |
-| Ảnh mẫu | `images`: mảng Data URL có MIME thật, tối đa 10 ảnh trong workflow |
-| Khóa nếu server yêu cầu | Biến môi trường `NINEROUTER_KEY` |
+| Request | `model`, `prompt`, `size: "1024x1536"`, `output_format: "jpeg"`, `images` |
+| Thành phẩm | JPEG **1080 × 1440**, quality **95**, chroma **4:4:4**, nền trắng, sRGB |
+| Bố cục khi đổi kích thước | Fit + padding, không crop/méo/chèn chữ |
+| Ảnh mẫu | PNG/JPEG thật, Data URL đúng MIME, tối đa 10 ảnh, giữ thứ tự |
+| Khóa nếu server yêu cầu | `NINEROUTER_KEY` từ môi trường; không lưu header/khóa |
+| Thời hạn | 300 giây cho HTTP; không retry hoặc tự đổi model |
 
-Model này dùng cho tạo mẫu nhân vật, slide và sửa ảnh. Theo
-[skill 9Router chính thức](https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-image/SKILL.md),
-nhánh Codex dùng `image` hoặc `images` cho ảnh đầu vào, `size` cho kích thước;
-không dùng lại `aspect_ratio`/`reference_images` của nhánh Gemini cũ.
-Không tự thêm các tham số tùy chọn hoặc đổi model khi gặp lỗi. Giữ nguyên
-ảnh mẫu/snapshot đã chốt và provenance của ảnh cũ, không tự vẽ lại nhân vật.
-Skill nêu nhánh Codex cần ChatGPT Plus/Pro; metadata không xác nhận quyền hay
-khả năng tạo ảnh thực tế của tài khoản. Thiếu quyền thì dừng, không tự mua gói.
+Theo [skill 9Router chính thức](https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-image/SKILL.md),
+nhánh Codex dùng `image`/`images`, `size`, `output_format`; không dùng
+`aspect_ratio`/`reference_images` của Gemini cũ. Metadata/skill hiện chưa xác
+nhận `output_compression`: script **không giả gửi tham số 0.95 cho API**.
+Sau khi giữ nguyên response, ImageMagick có sẵn mã hóa JPEG quality 95 ngay
+trong wrapper. Đây là tham số encoder, không có nghĩa giữ chính xác 95% chất
+lượng. JPEG có mất dữ liệu; phải mở ảnh sau nén để đọc lại từng dấu tiếng Việt.
 
-Đã có lần tạo thành công với model cũ trên gateway này **không gửi Authorization**.
-Vì vậy không chặn từ đầu chỉ vì chưa có biến khóa. Nếu có `NINEROUTER_KEY`, gửi qua
-header. Nếu server hiện trả 401/403, dừng và yêu cầu cấp khóa qua kênh bí mật;
-không dò tìm bí mật, đổi cấu hình xác thực hoặc tự chuyển provider.
+Không yêu cầu khóa khi biến chưa có: gateway từng nhận request không có
+Authorization. 401/403 thì dừng, xin cấp khóa qua kênh an toàn, không dò tìm
+bí mật, in môi trường hoặc sửa xác thực. Skill nêu Codex cần ChatGPT Plus/Pro;
+không tự mua gói/tài khoản. Không mở cổng Internet hoặc đổi URL/model để lách lỗi.
 
-`localhost` là máy chạy Pi. Không tự mở cổng Internet, đổi URL/model, thêm tài
-khoản hoặc mua dịch vụ. Không bật `set -x`, `curl -v`, in môi trường hoặc lưu
-Authorization. Khóa từng lộ trong chat cần được người dùng thay mới.
+## Một lệnh cho mỗi lượt tạo/sửa
 
-## Chuẩn bị đầu vào
-
-1. Lưu prompt đã điền thật, dùng [character](../prompts/character.md) khi thiết
-   kế mẫu hoặc [illustration](../prompts/illustration.md) khi vẽ slide.
-2. Mở từng ảnh mẫu; ghi thứ tự ảnh → ID/version/vai trò trong prompt và
-   `notes.md`. Với slide, đưa đúng `text` của trang vào prompt để AI in chữ;
-   không gửi toàn bộ nguồn hoặc phần kinh không cần in.
-3. Dùng ảnh snapshot của tập cho nhân vật. Mẫu `generated` được dùng ngay;
-   không cần duyệt riêng. Thiếu nhân vật thì tạo trước, không vẽ text-only rồi
-   hy vọng model nhớ mặt. Cảnh không có nhân vật có thể dùng chỉ ảnh phong cách.
-4. Chạy từ repo bằng `bash`, có `curl`, `jq`, `file`, `base64`; thời hạn tool
-   dài hơn 300 giây. Thay hai đường dẫn và mảng `refs` theo công việc thật.
-   Không chạy nguyên các đường dẫn ví dụ dưới đây.
-
-## Lệnh cho một lượt vẽ
+1. Lưu prompt thực tế, đúng text và chỉ dẫn nhận diện theo
+   [character](../prompts/character.md) hoặc [illustration](../prompts/illustration.md).
+2. Mở các ảnh mẫu thật; ghi thứ tự → ID/version/vai trò trong prompt và notes.
+   Nhân vật có sẵn phải dùng snapshot đã chốt, không chỉ gửi đường dẫn/ID.
+3. Từ gốc repo, chọn **thư mục draft chưa tồn tại**. Thời hạn tool dài hơn
+   300 giây để còn xử lý ảnh sau HTTP. Thay đường dẫn ví dụ bằng dữ liệu thật:
 
 ```bash
-(
-  set -euo pipefail
-  url="${NINEROUTER_URL:-http://localhost:20128}"
-  prompt_file='episodes/TEN-TAP/prompts/001-r01.txt'
-  drafts='episodes/TEN-TAP/drafts'
-  refs=( 'episodes/TEN-TAP/references/PHAT_01/v1/reference.jpg' )
-
-  test -s "$prompt_file"
-  test "${#refs[@]}" -le 10
-  mkdir -p "$drafts"
-  work="$(mktemp -d "$drafts/001-r01-XXXXXX")"
-  : > "$work/references.txt"
-  : > "$work/reference-paths.txt"
-  for ref in "${refs[@]}"; do
-    mime="$(file --brief --mime-type "$ref")"
-    case "$mime" in
-      image/png|image/jpeg) ;;
-      *) printf 'Reference is not PNG/JPEG: %s\n' "$ref" >&2; exit 1 ;;
-    esac
-    printf '%s\n' "$ref" >> "$work/reference-paths.txt"
-    printf 'data:%s;base64,' "$mime" >> "$work/references.txt"
-    base64 < "$ref" | tr -d '\r\n' >> "$work/references.txt"
-    printf '\n' >> "$work/references.txt"
-  done
-  jq -n --rawfile prompt "$prompt_file" --rawfile refs "$work/references.txt" '{
-    model: "cx/gpt-image-2.6-flare",
-    prompt: $prompt,
-    size: "1024x1536",
-    images: ($refs | split("\n") | map(select(length > 0)))
-  }' > "$work/request.json"
-
-  # Pass the optional secret via stdin, never curl arguments or saved headers.
-  {
-    if [ -n "${NINEROUTER_KEY:-}" ]; then
-      printf 'Authorization: Bearer %s\n' "$NINEROUTER_KEY"
-    fi
-  } | curl --silent --show-error --fail \
-    --connect-timeout 5 --max-time 300 \
-    --request POST "$url/v1/images/generations?response_format=binary" \
-    --header 'Content-Type: application/json' --header @- \
-    --data-binary "@$work/request.json" \
-    --output "$work/response.bin" \
-    --write-out 'HTTP %{http_code}; seconds %{time_total}\n' > "$work/result.txt"
-
-  case "$(file --brief --mime-type "$work/response.bin")" in
-    image/png) extension='png' ;;
-    image/jpeg) extension='jpg' ;;
-    *) printf 'Response is not PNG/JPEG; inspect failure\n' >&2; exit 1 ;;
-  esac
-  cp "$work/response.bin" "$work/image.$extension"
-  printf 'Draft: %s/image.%s\n' "$work" "$extension"
-)
+node scripts/draw-image.mjs \
+  'episodes/TEN-TAP/prompts/001-r01.txt' \
+  'episodes/TEN-TAP/drafts/001-r01' \
+  'episodes/TEN-TAP/references/PHAT_01/v1/reference.jpg'
 ```
 
-`refs` có thể rỗng (`refs=()`) chỉ khi thiết kế lần đầu mà không có ảnh phong
-cách, hoặc cảnh thực sự không cần ảnh tham chiếu. Với nhân vật có sẵn phải gửi
-đủ ảnh định danh. Thường thiết kế mới dùng
-`references/user-style-v1/example-01-original.png` làm **ảnh phong cách**.
-Ghi rõ vai trò đó để model không sao chép chữ/người phụ trong ảnh.
+Các đối số sau thư mục draft là ảnh tham chiếu, đúng thứ tự. Có thể không có
+ảnh mẫu khi thiết kế mới/cảnh không cần; thường dùng
+`references/user-style-v1/example-01-original.png` làm **ảnh phong cách**, không
+phải định danh mọi nhân vật. Mọi lần sửa vẫn gửi lại mẫu thật và toàn bộ text
+đúng; không gửi cả nguồn kinh khi chỉ cần in một trang.
 
-Giữ tối đa 10 ảnh tham chiếu theo workflow; không suy ra model chắc chắn nhận
-đủ mọi ảnh chỉ từ HTTP 200. Kiểm tra số lượng, giải mã Data URL đối chiếu ảnh
-gốc khi có nghi ngờ; ảnh trả về phải giữ đúng mặt. Data URL phải đúng MIME
-thực, không base64 thô bị mặc định nhầm PNG.
+Script tự tạo thư mục độc quyền, lưu request/reference metadata, gọi **một**
+POST rồi xử lý ảnh. Nếu thư mục đã có thì từ chối trước API; không xóa thư mục
+để chạy lại. Kết quả một lượt:
 
-## Sau khi nhận ảnh
+- `request.json`: đúng payload, prompt và Data URL, không chứa Authorization.
+- `references.json`: đường dẫn/MIME/kích thước thật của từng mẫu.
+- `response.bin`: bytes phản hồi API nguyên vẹn, không ghi đè bằng JPEG đã nén.
+- `status.json`: checkpoint lưu atomically; `in_flight`, `received`, `succeeded`,
+  `invalid_input`, `failed`, `unknown` hoặc `normalize_failed`.
+- `image.jpg`: ảnh đã fit/padding và mã hóa JPEG95, chỉ xuất hiện sau bước xử lý.
+  Chỉ dùng khi status là `succeeded`. Status lưu MIME/kích thước/dung lượng
+  nguồn và đầu ra. Không dùng thành công kỹ thuật để suy ra đúng nội dung.
 
-- Đọc `result.txt`, mở ảnh thật, đo MIME/kích thước. Trên macOS dùng
-  `sips -g pixelWidth -g pixelHeight DUONG_DAN_ANH` hoặc `magick identify`.
-- Mở ảnh và đọc từng dòng, so từng từ/dấu với `text` trong episode.json. Sai
-  chữ thì sửa ảnh bằng API với toàn bộ text đúng và cùng mẫu nhân vật. Nếu
-  không đọc chắc, chưa được coi là đạt. OCR nếu có chỉ là hỗ trợ.
-- Kiểm tra nhân vật/cảnh/bố cục theo WORKFLOW; lưu ảnh lỗi và lý do sửa. Điền
-  đường dẫn ảnh đạt vào `image` trong episode.json; không sửa text/mẫu để hợp
-  thức hóa kết quả sai.
-- API không bảo đảm PNG hay chính xác 1080 × 1440. Đổi định dạng và fit ảnh
-  theo lệnh dưới; không đổi đuôi JPEG thành PNG, crop hoặc kéo méo ảnh.
-- Model không có trí nhớ nhân vật giữa các request. **Mọi lượt vẽ/sửa đều gửi
-  lại ảnh mẫu và đặc điểm khóa**, kể cả cùng một phiên chat.
+Đầu vào/response tối đa 49 MB/ảnh. PNG/JPEG cũ được dùng nguyên làm references;
+không đổi bytes, version hoặc provenance của kho nhân vật. Ảnh trả về được đo
+MIME thực, không tin đuôi hay Content-Type; response không phải ảnh thì dừng.
+Không thêm bước ghép chữ hoặc app/renderer: chữ và tranh đều đã do API tạo.
 
-## Xuất PNG đúng khung, không thêm chữ
+## Kiểm tra và xuất revision
 
-Dùng ImageMagick đã có trên máy. Lệnh chỉ đổi kích thước/định dạng của ảnh AI
-đã có chữ; không dàn trang hay chèn chữ mới. Tạo revision mới một lần trước
-khi xuất các trang, không ghi đè revision cũ:
+Mở `image.jpg` ngay sau mỗi lượt, so từng dòng/từ/dấu với `text` trong JSON,
+kiểm tra mặt/y phục/cảnh/bố cục. Không đoán chữ nhỏ, không coi OCR là chứng cứ
+tuyệt đối. Sai thì lưu lý do, tạo lượt sửa mới bằng cùng script/references;
+tối đa hai lần sửa/trang. Không sửa nguồn/kịch bản để hợp thức hóa chữ sai.
+Lưu kết quả kiểm tra ngay sau từng ảnh, không chờ đủ cả bộ.
+
+Wrapper đã tạo đúng 1080 × 1440; **không mã hóa JPEG lại khi xuất**. Tạo revision
+mới rồi sao chép nguyên bytes ảnh đạt sang `001.jpg`, `002.jpg`...:
 
 ```bash
 out='episodes/TEN-TAP/output/r01'
 test ! -e "$out" && mkdir -p "$out"
+test ! -e "$out/001.jpg" && cp 'episodes/TEN-TAP/drafts/001-r01/image.jpg' "$out/001.jpg"
 ```
 
-Chỉ tiếp tục khi tạo thư mục thành công. Với từng trang đã kiểm tra:
+Chỉ tiếp tục nếu lệnh tạo thư mục/sao chép thành công. Điền đúng đường dẫn JPG
+vào episode.json rồi lưu snapshot vào `output/rNN/episode.json`. Mở lại từng
+ảnh cuối, không chỉ draft; chữ/dấu phải còn rõ. Đặt `ready_for_review` chỉ khi
+đủ trang đã đạt. `/files` gửi nguyên artifact JPEG đã chốt, không phải raw
+response; PNG/revision/snapshot cũ vẫn hợp lệ và được giữ nguyên, không nén lại.
+
+## Lỗi và tiếp tục không tạo ảnh trùng
+
+- `invalid_input`: chưa gọi API; sửa prompt/đường dẫn/môi trường, dùng draft mới.
+- `failed`: HTTP từ chối xác định; giữ response để xem lỗi an toàn. Không tự
+  đổi model, thêm tài khoản hay retry.
+- `in_flight`/`unknown`: request có thể đã được xử lý (kể cả timeout, mất kết
+  nối, HTTP 5xx/408); dừng, kiểm tra server trước khi gửi lại. Không tự retry.
+- `normalize_failed`/`received`: response đã lưu nhưng chuyển đổi chưa xong;
+  sửa vấn đề cục bộ rồi xử lý **file đã có**, không gọi lại API:
 
 ```bash
-magick 'episodes/TEN-TAP/drafts/THU-MUC/image.jpg' \
-  -auto-orient -resize 1080x1440 -background white -gravity center \
-  -extent 1080x1440 "$out/001.png"
+node scripts/draw-image.mjs --normalize \
+  'episodes/TEN-TAP/drafts/001-r01/response.bin' \
+  'episodes/TEN-TAP/drafts/001-r01-local-fix'
 ```
 
-Đổi tên trang 001, 002… đúng thứ tự; không chạy lệnh với đường dẫn giữ chỗ.
-`-resize` ở đây giữ tỷ lệ, `-extent` chỉ đệm do ảnh đã fit trong khung. Không
-thêm dấu `^` hoặc resize ép tỷ lệ. Sau khi xuất đủ trang, lưu snapshot:
+Chế độ `--normalize` cũng dùng thư mục mới và giữ bản nguồn, không gọi mạng.
+Ảnh cũ chỉ được chuyển đổi khi công việc thật cần và phải lưu thành bản mới;
+không tự nén lại toàn kho. Thiếu `magick` thì báo môi trường, không bỏ qua
+wrapper/cài renderer ngầm. Không tìm/in/lưu khóa, raw lỗi không gửi vào Telegram.
 
-```bash
-cp 'episodes/TEN-TAP/episode.json' "$out/episode.json"
-```
+## Bằng chứng và giới hạn
 
-Mở lại từng PNG cuối, đọc so chữ và kiểm tra 1080 × 1440, không mờ/chặt chữ.
-Thiếu `magick` thì báo môi trường và chỉ dùng công cụ resize/đổi định dạng
-sẵn có khác nếu bảo đảm không crop/méo; không cài hoặc thêm renderer chữ ngầm.
-
-## Khi lỗi
-
-| Lỗi | Xử lý |
-| --- | --- |
-| 401/403 | Dừng, xin cấp khóa an toàn; không in khóa, không thử lách xác thực |
-| 400/model | Xem `/v1/models/image` và `/v1/models/info?id=cx%2Fgpt-image-2.6-flare`; đối chiếu skill 9Router, không đổi model ngầm |
-| 503 | Báo tài khoản/provider chưa sẵn sàng; không tự thêm tài khoản |
-| Timeout/mất kết nối | Lưu request, báo trạng thái chưa biết; kiểm tra server trước khi gửi lại |
-| JSON/HTML thay vì ảnh | Dừng và đọc lỗi an toàn; không coi là ảnh |
-| Tranh/chữ sai | Sửa lỗi cụ thể, gửi lại text đúng và references; tối đa 2 lần sửa/trang rồi báo giới hạn |
-
-Không thêm retry tự động. Trả rõ phần nào đã làm, phần nào bị chặn; không
-đặt `ready_for_review` cho tập còn ảnh lỗi/chưa đủ trang.
-
-## Bằng chứng và giới hạn đã biết
-
-- Ngày 2026-11-13, GET metadata local xác nhận `cx/gpt-image-2.6-flare` là
-  model `image`, endpoint `/v1/images/generations`, có `text2img`, `edit`,
-  `multiImage` và tham số `size`. Đây chỉ là kiểm tra metadata; chưa gọi tạo
-  ảnh bằng model mới, chưa xác minh chất lượng chữ/nhân vật, kích thước hoặc
-  số ảnh tham chiếu upstream thực sự chấp nhận.
-- Lần thử 2026-11-11 tại `episodes/local-api-e2e-20261111-v1/` có request,
-  response và báo cáo. Ảnh phong cách trong Data URL khớp file gốc; prompt
-  khớp file đã lưu; đầu ra JPEG **896 × 1200** dù header ghi `image/png`.
-  Đây là thử tạo mẫu không chữ, không chứng minh giữ diện mạo qua nhiều cảnh
-  hoặc khả năng in đúng toàn bộ chữ tiếng Việt của quy trình mới.
-- Mẫu tạo ở lần thử đó đã được đưa vào kho dưới trạng thái `generated`,
-  không sửa báo cáo cũ và không coi là người dùng đã duyệt.
-- Ảnh mèo thử cũ được giữ nguyên bytes tại
-  [archive/cat-api-original.jpg](archive/cat-api-original.jpg), JPEG 1024 × 1024.
-- Với model cũ `ag/gemini-3.1-flash-image`, đã đối chiếu nhánh `antigravity`
-  của 9Router local: đọc `aspect_ratio`, xử lý `reference_images` thành
-  `inlineData`. Đây là bằng chứng lịch sử, không chứng minh cách nhánh Codex
-  xử lý ảnh. Không suy diễn các tham số hoặc khả năng giữa hai nhánh.
-- Nguồn tham khảo hiện hành: [9router-image skill](https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-image/SKILL.md).
-  API local có thể thay đổi theo bản cài; khi kết quả khác tài liệu, kiểm tra
-  bản thực tế thay vì tuyên bố đã xác minh lại upstream.
+- GET metadata local xác nhận model ảnh, endpoint, `text2img`/`edit`/`multiImage`
+  và `output_format`; không chứng minh quyền tài khoản hay chất lượng chữ.
+- Wrapper được kiểm tra bằng HTTP giả cục bộ và ImageMagick thật, không gọi
+  API sinh ảnh để thử setup. Chưa phải kiểm thử đầu-cuối với upstream.
+- Hồ sơ `episodes/local-api-e2e-20261111-v1/` giữ nguyên: thử model cũ trả JPEG
+  **896 × 1200** dù header `image/png`; không chứng minh chữ/nhân vật đúng.
+- Mẫu từ lần thử cũ có trạng thái `generated`, không tự ghi người dùng duyệt.
+- [Ảnh mèo thử gốc](archive/cat-api-original.jpg), JPEG 1024 × 1024, giữ nguyên bytes.
+- Bằng chứng cũ cho `ag/gemini-3.1-flash-image`/nhánh `antigravity` về
+  `aspect_ratio`/`reference_images` chỉ là lịch sử, không suy diễn sang Codex.
+- [Skill 9Router](https://raw.githubusercontent.com/decolua/9router/refs/heads/master/skills/9router-image/SKILL.md)
+  có thể khác bản cài; khi kết quả khác phải đối chiếu thực tế, không tuyên bố
+  đã kiểm tra upstream chỉ vì HTTP 200.

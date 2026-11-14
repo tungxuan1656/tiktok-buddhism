@@ -9,7 +9,7 @@ Mỗi lần làm một thư mục, Pi tự tạo; người dùng không phải �
 	  references/         Snapshot JSON + ảnh nhân vật đã dùng
 	  prompts/            Prompt thực tế từng lượt
 	  drafts/             Request, phản hồi gốc, ảnh AI tạo cả tranh/chữ
-	  output/r01/         001.png… và episode.json snapshot, bản để người dùng xem
+	  output/r01/         001.jpg… và episode.json snapshot, bản để người dùng xem
 	  output/r02/         Revision mới, không ghi đè r01
 
 Chỉ tạo thứ có dùng. `episode.json` là kịch bản duy nhất, không cần thêm
@@ -18,7 +18,7 @@ Mỗi revision giữ một bản episode JSON để biết đúng chữ, ảnh v
 vật đã dùng. Văn bản trong JSON là nội dung chuẩn, không phải bản tự chép lại
 từ ảnh model tạo sai.
 
-- `draft`: đang làm; `ready_for_review`: Pi đã đọc/so đủ PNG, chờ người dùng;
+- `draft`: đang làm; `ready_for_review`: Pi đã đọc/so đủ ảnh sau nén, chờ người dùng;
   `approved`: người dùng đã xác nhận revision cụ thể, ghi vào notes.
 - Nhân vật `generated` dùng được, không cần duyệt mẫu trước.
 - Với nguyên văn, nối toàn bộ text phải bằng source.txt, kể cả khoảng trắng;
@@ -27,10 +27,12 @@ từ ảnh model tạo sai.
 - AI tạo cả tranh lẫn chữ. Pi đọc chữ và so nội dung/dấu; sai thì sửa ảnh,
   không thêm renderer ghép chữ hoặc sửa nguồn để hợp thức hóa lỗi.
 - Lưu kết quả tự kiểm tra từng trang vào notes: chữ, nhân vật, bố cục, lỗi/lượt
-  sửa, đường dẫn PNG đã xem. Không gọi tập thiếu ảnh/ảnh lỗi là hoàn thành.
+  sửa, đường dẫn JPEG/PNG đã xem. JPEG mới do wrapper xuất quality 95; không
+  mã hóa lại khi sao chép vào output, không sửa PNG/revision cũ. Không gọi tập thiếu ảnh/ảnh lỗi là hoàn thành.
 - Đưa ảnh/đường dẫn trực tiếp trong phiên Pi, không tự đăng/gửi dịch vụ khác.
-  Ngoại lệ tác vụ Telegram: bridge gửi PNG gốc về đúng private chat chủ bot
-  sau khi kiểm tra manifest; không mở quyền gửi tới người nhận khác.
+  Ngoại lệ tác vụ Telegram: bridge gửi album ảnh về đúng private chat chủ bot
+  sau khi kiểm tra manifest; `/files` gửi nguyên tệp JPEG/PNG đã chốt vì album có thể bị nén.
+  Không mở quyền gửi tới người nhận khác.
 
 Tác vụ Telegram dùng `telegram-<task-id>/` với cấu trúc trên và thêm
 `handoff/<run-id>/request.json`, `result.json` cho giao tiếp máy đọc. Session

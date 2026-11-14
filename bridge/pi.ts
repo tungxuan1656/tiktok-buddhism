@@ -5,6 +5,17 @@ import { mkdir } from 'node:fs/promises';
 import { eventLine } from './trace.ts';
 import { BOT_MODEL } from './model.ts';
 
+export class PiFailure extends Error {
+  code: string;
+  constructor(code: string, message: string) { super(message); this.code = code; }
+}
+
+function modelFailure(error: string) {
+  const status = error.match(/API error \((\d{3})\)/)?.[1];
+  if (error.includes('Invalid JSON body')) return new PiFailure('model_json', `Model/API ${status ? `trả HTTP ${status}` : 'báo lỗi'}: Invalid JSON body. Request bị từ chối trước khi có kết quả; kiểm tra kích thước ngữ cảnh/ảnh, không tạo lại ảnh.`);
+  return new PiFailure('model', status ? `Model/API trả HTTP ${status}; lượt chưa hoàn tất, không tự thử lại.` : 'Model/Pi báo lỗi; lượt chưa hoàn tất, cần kiểm tra lịch sử session.');
+}
+
 export interface Runner {
   run(session: string, prompt: string, phase: (text: string) => void, signal: AbortSignal, trace?: (line: string) => void): Promise<void>;
   cancel(): Promise<void>;
@@ -44,7 +55,7 @@ export class PiRunner implements Runner {
       return this.client;
     } catch {
       await this.stop();
-      throw new Error('Không khởi động được Pi RPC: cần 9router/cx/gpt-6.1-sol với thinking xhigh; kiểm tra model/auth và bridge/model.ts');
+      throw new PiFailure('connection', `Không khởi động được Pi RPC: cần ${BOT_MODEL.provider}/${BOT_MODEL.id} với thinking ${BOT_MODEL.thinking}; kiểm tra model/auth và bridge/model.ts`);
     }
   }
 
@@ -55,25 +66,32 @@ export class PiRunner implements Runner {
     let off = () => {};
     let timer: NodeJS.Timeout | undefined;
     let heartbeat: NodeJS.Timeout | undefined;
+    let failure: PiFailure | undefined;
+    let settledSeen = false;
     const settled = new Promise<void>((resolve, reject) => {
       this.fail = reject;
       off = client.onEvent(event => {
         const line = eventLine(event);
         if (line) trace?.(line);
+        if (event.type === 'message_end' && event.message.role === 'assistant') {
+          failure = event.message.stopReason === 'error' ? modelFailure(event.message.errorMessage ?? '') : undefined;
+        }
         if (event.type === 'agent_settled') {
-          if (event.aborted) reject(new Error('Pi đã dừng trước khi hoàn thành'));
+          settledSeen = true;
+          if (failure) reject(failure);
+          else if (event.aborted) reject(new Error('Pi đã dừng trước khi hoàn thành'));
           else resolve();
         }
         if (event.type === 'tool_execution_start') {
           phase(event.toolName === 'read' ? 'Đang đọc tài liệu hoặc kiểm tra ảnh' : 'Đang thực hiện công việc và lưu kết quả');
         }
       });
-      timer = setTimeout(() => reject(new Error('Pi vượt giới hạn 45 phút; cần kiểm tra tiến độ')), 45 * 60_000);
+      timer = setTimeout(() => reject(new PiFailure('timeout', 'Pi vượt giới hạn 2 giờ; giữ ảnh/checkpoint, cần kiểm tra tiến độ trước khi tiếp tục.')), 2 * 60 * 60_000);
       let checking = false;
       heartbeat = setInterval(() => {
         if (checking) return;
         checking = true;
-        void client.getState().catch(() => reject(new Error('Mất kết nối Pi; không tự chạy lại'))).finally(() => { checking = false; });
+        void client.getState().catch(() => reject(new PiFailure('connection', 'Mất kết nối Pi; không tự chạy lại'))).finally(() => { checking = false; });
       }, 15_000);
     });
     // The listener exists before prompt; a fast settlement must not be lost.
@@ -81,7 +99,7 @@ export class PiRunner implements Runner {
       if (disposition !== 'started') throw new Error('Pi không bắt đầu lượt xử lý');
     });
     try { await Promise.all([accepted, settled]); }
-    catch (error) { await this.cancel(); throw error; }
+    catch (error) { if (!settledSeen) await this.cancel(); throw error; }
     finally { off(); clearTimeout(timer); clearInterval(heartbeat); this.fail = undefined; }
   }
   async cancel() {

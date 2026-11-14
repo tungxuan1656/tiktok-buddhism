@@ -5,9 +5,10 @@
 - Minh họa Phật giáo 2D; nét mảnh, chất liệu chì màu, vàng đất/nâu dịu.
   Không ảnh chụp, 3D, anime hoặc hiệu ứng bóng bẩy.
 - Nền trắng/giấy sáng, thoáng; biểu cảm trang nghiêm, hiền hòa, tiết chế.
-- Khung dọc 3:4; thành phẩm PNG **1080 × 1440**. Gửi kích thước theo
-  [hướng dẫn API](painter-local-api.md), đo ảnh thật rồi fit + padding khi xuất,
-  không crop/méo; không mặc định model nào cũng nhận `aspect_ratio`.
+- Khung dọc 3:4; thành phẩm **JPEG quality 95, 1080 × 1440**, chroma 4:4:4.
+  Dùng [wrapper API](painter-local-api.md) để giữ raw, đo ảnh, fit + padding và
+  nén ngay trong script; không crop/méo/chèn chữ hoặc mã hóa lại khi xuất. PNG
+  cũ vẫn hợp lệ, không tự chuyển đổi kho. Phải kiểm tra chữ sau nén.
 - **Bố cục linh hoạt theo nội dung**, không bắt buộc tỷ lệ vùng chữ/tranh hay
   vị trí trên/dưới cố định. Sắp xếp để tranh và chữ hiển thị đầy đủ, rõ ràng,
   cân đối; không che nhau hoặc bị cắt khỏi khung. Không thu nhỏ chữ để ép bố cục.
@@ -18,6 +19,9 @@
 
 ## Chữ do AI vẽ ngay trên slide
 
+- `text` phải qua cổng biên tập trong WORKFLOW: nội dung sẵn sàng đăng cho
+  độc giả, không mã tập/phần quản lý, trạng thái hoặc lời nói với chủ bot.
+  Nguồn trên ảnh ghi đúng tên sách/kinh, không "bản bạn cung cấp".
 - Đưa đúng nội dung `text` vào prompt. Chỉ đoạn đó được in, không thêm chữ phụ.
 - Chữ nâu sẫm gần `#4B2F1E`, nét rõ, mềm, canh giữa, lề thoáng. Ưu tiên
   kiểu chữ dễ đọc hỗ trợ tiếng Việt đầy đủ, đồng nhất qua các trang.

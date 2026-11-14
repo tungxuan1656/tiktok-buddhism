@@ -18,7 +18,7 @@ Ví dụ:
 > Sửa slide 3 của tập vừa làm: ít chữ hơn, giữ nguyên nhân vật.
 
 Không chỉ định gì thêm: tranh Phật giáo 2D chì màu, nền sáng, chữ nâu,
-5 slide, thành phẩm PNG 1080 × 1440. Bố cục linh hoạt, không chia tỷ lệ vùng
+5 slide, thành phẩm JPEG quality 95, 1080 × 1440. Bố cục linh hoạt, không chia tỷ lệ vùng
 chữ/tranh cố định; ưu tiên đủ tranh và chữ, rõ ràng, dễ đọc.
 Pi tự chia nội dung và lưu quyết định để lần sau tiếp tục được. Trích nguyên
 văn và diễn giải được phân biệt rõ; không gán lời Pi viết thành lời kinh.
@@ -26,7 +26,8 @@ văn và diễn giải được phân biệt rõ; không gán lời Pi viết th
 ## Giao việc và nhận ảnh bằng điện thoại
 
 Đã có [cầu nối Telegram](bridge/README.md): tin nhắn của bạn → Pi RPC →
-PNG gốc gửi về private chat. Pi vẫn tự làm trọn bộ, không duyệt trung gian.
+Album ảnh gửi về private chat; `/files` để tải tệp JPEG/PNG đã chốt vì Telegram có thể nén
+ảnh trong album. Pi vẫn tự làm trọn bộ, không duyệt trung gian.
 Cần cấu hình bot một lần trên máy; sau đó dùng điện thoại để giao việc, yêu cầu
 sửa và tải ảnh đăng TikTok. Máy chạy Pi và 9Router phải còn bật, không ngủ.
 
@@ -58,9 +59,11 @@ Mỗi người lặp lại có hồ sơ riêng, không dùng một mã nhóm đ�
 
 ## Môi trường và cách nhận kết quả
 
-Pi cần truy cập được 9Router local. Máy hiện tại đã có `curl`, `jq`,
-`file` và `magick`; không cần cài app, dependency Python hay dịch vụ mới.
-`magick` chỉ đổi kích thước/định dạng, **không thêm chữ**. Khóa API nếu cần
+Pi cần truy cập được 9Router local, Node 24.19+ và `magick` có sẵn.
+Mọi lượt vẽ/sửa dùng [scripts/draw-image.mjs](scripts/draw-image.mjs): gọi API,
+giữ raw response rồi xuất JPEG95 trong cùng script; không cài dependency mới.
+`magick` chỉ fit/padding và nén/đổi định dạng, **không thêm chữ**. Không mã hóa
+lại khi xuất revision; PNG và ảnh mẫu cũ giữ nguyên. Khóa API nếu cần
 chỉ cấp qua môi trường, không đặt vào repo/chat.
 
 Pi mở từng ảnh để đối chiếu chữ, dấu tiếng Việt, bố cục và nhân vật; sai thì

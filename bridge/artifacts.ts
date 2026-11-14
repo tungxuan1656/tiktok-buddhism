@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
 import { copyFile, lstat, mkdir, readFile, realpath, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { extname, isAbsolute, join, relative, sep } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Delivery, Run, Task } from './store.ts';
@@ -27,12 +27,20 @@ async function json(root: string, path: string) {
   catch { throw new Error('Không đọc được JSON kết quả'); }
 }
 
-export async function pngBytes(path: string): Promise<Uint8Array> {
+export function imageMime(bytes: Uint8Array): 'image/png' | 'image/jpeg' {
+  if (Buffer.from(bytes.subarray(0, 8)).equals(Buffer.from('89504e470d0a1a0a', 'hex'))) return 'image/png';
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  throw new Error('File không phải PNG/JPEG');
+}
+
+export async function imageBytes(path: string): Promise<Uint8Array> {
   if ((await stat(path)).size > 49_000_000) throw new Error('Ảnh vượt giới hạn gửi Telegram');
   const bytes = await readFile(path);
-  if (!bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))) throw new Error('File không phải PNG');
+  const format = imageMime(bytes) === 'image/png' ? 'PNG' : 'JPEG';
+  const extension = extname(path);
+  if (format === 'PNG' ? extension !== '.png' : !['.jpg', '.jpeg'].includes(extension)) throw new Error('Đuôi file không khớp PNG/JPEG');
   const { stdout } = await exec('magick', ['identify', '-regard-warnings', '-format', '%m %w %h %n', path], { timeout: 30_000 });
-  if (stdout !== 'PNG 1080 1440 1') throw new Error('PNG không đúng 1080 x 1440 hoặc không đọc được');
+  if (stdout !== `${format} 1080 1440 1`) throw new Error('PNG/JPEG không đúng 1080 x 1440 hoặc không đọc được');
   return bytes;
 }
 
@@ -59,12 +67,12 @@ export async function collect(task: Task, run: Run, stateDir: string): Promise<R
   await mkdir(outbox, { recursive: true, mode: 0o700 });
   for (let i = 0; i < report.files.length; i++) {
     const path = report.files[i];
-    if (typeof path !== 'string' || !path.startsWith(prefix) || !/\/\d{3}\.png$/.test(path) || episode.slides[i]?.image !== path || report.files.indexOf(path) !== i) {
+    if (typeof path !== 'string' || !path.startsWith(prefix) || !/\/\d{3}\.(?:jpg|jpeg|png)$/.test(path) || episode.slides[i]?.image !== path || report.files.indexOf(path) !== i) {
       throw new Error('Ảnh không đúng revision, thứ tự hoặc bị trùng');
     }
     const full = await confined(task.dir, path);
-    const bytes = await pngBytes(full);
-    const target = join(outbox, `${String(i + 1).padStart(3, '0')}.png`);
+    const bytes = await imageBytes(full);
+    const target = join(outbox, `${String(i + 1).padStart(3, '0')}${extname(path)}`);
     try { await copyFile(full, target, constants.COPYFILE_EXCL); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
     if (hash(await readFile(target)) !== hash(bytes)) throw new Error('Ảnh thay đổi trong lúc chốt bàn giao');

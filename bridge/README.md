@@ -1,4 +1,4 @@
-# Telegram → Pi → PNG gốc
+# Telegram → Pi → album ảnh và tệp ảnh đã chốt
 
 Một chủ bot, một private chat, một lượt thực thi tại một thời điểm. Service
 TypeScript chỉ nhận tin, giữ trạng thái và bàn giao; Pi tự lên kịch bản, tạo
@@ -31,13 +31,13 @@ chmod 600 .env
 6. Chờ tin “Bridge sẵn sàng” trên điện thoại, nhắn yêu cầu làm slide.
 
 Bot được ghim vào **`cx/gpt-6.1-sol`**, provider **`9router`**, thinking
-**`xhigh`**; không còn dùng `PI_MODEL` hoặc model mặc định để chọn ngầm.
-[model.ts](model.ts) chỉ bổ sung metadata `xhigh` cho bản sao model trong
-session bot vì alias local hiện chỉ khai báo đến `high`. Giữ nguyên endpoint,
-auth, các model khác và mặc định Pi toàn cục; không thay provider. Mỗi lần mở
-session, RPC phải xác nhận đúng model và `xhigh`, sai thì dừng trước prompt,
-không tự hạ xuống `high`. `npm run check` in lựa chọn hiệu lực này, không
-chứng minh upstream đã chấp nhận một request thực với `xhigh`.
+**`high`**; không dùng `PI_MODEL` hoặc model mặc định để chọn ngầm.
+[model.ts](model.ts) áp dụng model và mức suy luận có sẵn cho session bot,
+không bổ sung hay sửa metadata model. Giữ nguyên endpoint, auth, các model
+khác và mặc định Pi toàn cục; không thay provider. Mỗi lần mở session, RPC
+phải xác nhận đúng model và `high`, sai thì dừng trước prompt, không tự hạ
+mức suy luận. `npm run check` in lựa chọn hiệu lực này, không chứng minh
+upstream đã chấp nhận một request thực với `high`.
 
 Bridge tắt extension, MCP, skill và prompt template tự nạp; chỉ nạp extension
 model nói trên và bật read/bash/edit/write. AGENTS.md và hướng dẫn nội dung vẫn
@@ -52,19 +52,25 @@ bridge dừng thay vì tự xóa nó. Lệnh identify không chạy khi service 
 ## Cách dùng bằng điện thoại
 
 Nhắn bình thường: “Làm 5 slide về lắng nghe trước khi phản ứng”. Pi tự làm
-và gửi **document PNG**, đúng thứ tự, để tải bản gốc. Chỉ hỗ trợ tin nhắn chữ;
-ảnh/voice/file đầu vào chưa được tiếp nhận. Mỗi lượt tối đa 20 slide, 49 MB/file.
+và gửi **album ảnh đúng thứ tự**: 2–10 ảnh/album, một ảnh gửi riêng; hơn 10
+thì chia nhóm. Telegram có thể nén/đổi định dạng ảnh, không bảo đảm giữ nguyên
+chất lượng chữ. Artifact đã chốt vẫn lưu trên máy; `/files` tải revision mới nhất dưới
+dạng document, không tạo lại ảnh. Chỉ hỗ trợ tin nhắn chữ; ảnh/voice/file đầu
+vào chưa được tiếp nhận. Mỗi lượt tối đa 20 slide; ảnh album tối đa 10 MB/ảnh,
+Tệp gốc tối đa 49 MB/file. Ảnh quá giới hạn album dừng gửi để bạn dùng `/files`,
+không tự giảm chất lượng hoặc âm thầm chuyển sang tệp.
 
 | Lệnh | Ý nghĩa |
 | --- | --- |
 | `/status` | Task hiện tại, giai đoạn gần nhất, số tin chờ/giữ lại và file gửi thiếu/lỗi |
-| `/trace on` | Theo dõi trực tiếp bằng một tin nhắn được cập nhật, tối đa 10 dòng mới nhất |
-| `/trace off` | Tắt cập nhật trực tiếp, vẫn giữ bộ đệm log |
-| `/log` hoặc `/trace` | Xem ngay 10 dòng mới nhất, kể cả khi Pi đang chạy |
+| `/trace_on` | Theo dõi trực tiếp bằng một tin nhắn được cập nhật, tối đa 10 dòng mới nhất |
+| `/trace_off` | Tắt cập nhật trực tiếp, vẫn giữ bộ đệm log |
+| `/log` | Xem ngay 10 dòng mới nhất, kể cả khi Pi đang chạy |
 | `/cancel` | Dừng lượt đang làm/gửi; giữ dữ liệu và các tin bổ sung, không tự chạy lại |
 | `/done` | Kết thúc tập hiện tại; tập tiếp theo vẫn dùng hội thoại Pi này |
 | `/new` | Mở hội thoại Pi và tập mới; không xóa ảnh hoặc lịch sử cũ |
-| `/resend` | Chỉ gửi lại ảnh đã chốt nhưng chưa gửi/đã lỗi/bị dừng của tập hiện tại; không gọi Pi |
+| `/files` | Gửi toàn bộ tệp JPEG/PNG đã chốt của revision đã chốt mới nhất trong tập hiện tại; đợi lượt đang chạy/gửi xong trước |
+| `/resend` | Chỉ gửi lại phần chưa nhận của tập hiện tại, giữ kiểu ảnh/tệp đã lưu của từng revision; không gọi Pi |
 
 `/start` hoặc lệnh chưa biết hiển thị hướng dẫn. Tin nhắn sau mặc định sửa
 **cùng tập**, cùng session/snapshot nhân vật, xuất revision mới. Muốn tập mới
@@ -78,7 +84,7 @@ phục hồi run gián đoạn; không tự phát lại. Tin vẫn trong lịch 
 bạn gửi lại phần còn muốn làm. Tin trạng thái có thể mất nếu mạng lỗi; ảnh có
 sổ bàn giao riêng. `/status` không phát lại raw log, prompt hay khóa.
 
-Trace mặc định tắt; `/trace on` bật cho đến khi bạn tắt (lưu qua restart).
+Trace mặc định tắt; `/trace_on` bật cho đến khi bạn tắt (lưu qua restart).
 Log luôn chỉ giữ **10 dòng mới nhất của lượt hiện tại** trong SQLite, mỗi dòng
 có giờ và độ dài giới hạn. Sự kiện dồn nhanh được gộp, cập nhật khoảng 3 giây
 một lần và khi lượt kết thúc; không gửi một tin mới cho mỗi tool. Bật/tắt bình
@@ -88,7 +94,7 @@ Chỉ hiện trạng thái Pi, tên tool, một số tên file quen thuộc và 
 không gửi lệnh bash, đầu ra tool, nội dung tệp, prompt hoặc nội dung suy luận.
 Đây là log sự kiện thực, không phải bản sao transcript hoặc bằng chứng chất lượng.
 Nếu Telegram không xác nhận cập nhật, trace live tự tắt, không retry mù;
-`/log` vẫn xem được, `/trace on` để chủ động bật lại.
+`/log` vẫn xem được, `/trace_on` để chủ động bật lại.
 
 `ready_for_review` nghĩa Pi báo đã kiểm tra, chưa có nghĩa bạn đã duyệt.
 Bridge không suy ra chất lượng từ `agent_settled` hay chữ “done”. Bạn tự xem
@@ -127,11 +133,12 @@ Mac và 9Router vẫn phải bật, không ngủ; PM2 không giữ máy thức h
 
 - `episodes/telegram-<task-id>/`: episode.json, nguồn, notes, snapshot nhân vật,
   drafts và các `output/rNN/` bất biến; `handoff/<run-id>/` chứa request/result
+  và `failure.json` với loại lỗi/lý do an toàn nếu lượt bị ngắt
   theo [giao thức Pi](agent.md).
 - `.telegram/state.sqlite`: inbox/update offset chống nhận trùng, session/task,
-  từng run và từng document đã gửi (`message_id`, hash, trạng thái).
+  từng run, kiểu bàn giao và từng ảnh/tệp đã gửi (`message_id`, hash, trạng thái).
 - `.telegram/sessions/`: lịch sử hội thoại Pi; không sao chép transcript vào DB.
-- `.telegram/outbox/<run-id>/`: bản sao PNG đã chốt và hash; gửi lại không phụ
+- `.telegram/outbox/<run-id>/`: bản sao JPEG/PNG đã chốt và hash; gửi lại không phụ
   thuộc việc Pi đang sửa file nguồn. Kiểm tra lại hash trước mỗi lần gửi.
 - `.telegram/bridge-lock.sqlite`: SQLite giữ khóa liên tiến trình; tự nhả khi
   tiến trình chết, không có thao tác xóa stale PID file có thể đua nhau.
@@ -146,16 +153,44 @@ Các thư mục runtime, node_modules và .env đều bị Git bỏ qua.
 không tự phát lại prompt, không tự retry ảnh. Tác vụ mới sau đó phải đọc
 checkpoint/draft trước. Request API đã gửi có thể còn chạy trên máy chủ;
 `/cancel` không hoàn tiền hoặc bảo đảm hủy được yêu cầu từ xa. Giới hạn một
-lượt Pi là 45 phút; sự kiện tool chỉ cho biết hoạt động, không chứng minh API
-đã xong. Nếu yêu cầu ảnh chưa rõ, Pi phải dừng hỏi, không tự gọi lại.
+lượt Pi là 2 giờ để bộ dài có thời gian tạo và kiểm tra từng ảnh; vẫn có thể
+`/cancel` bất kỳ lúc nào. Sự kiện tool chỉ cho biết hoạt động, không chứng minh
+API đã xong. Nếu yêu cầu ảnh chưa rõ, Pi phải dừng hỏi, không tự gọi lại.
 
-**Gửi Telegram:** ghi `sending` trước POST, `sent` và message_id sau xác nhận.
-Mất mạng/timeout/khởi động lại lúc đang gửi → `unknown`, không tự retry; lỗi
-Telegram xác định → `failed`. Dừng chuỗi tại file lỗi để không đảo trang.
+**Lịch sử nhiều ảnh:** trước mỗi request model, extension của bot chỉ giữ tối đa
+8 ảnh gần nhất và 32 MiB base64 ảnh trong ngữ cảnh. Ảnh cũ thay bằng nhắc đọc lại,
+không xóa transcript, ảnh, nguồn hoặc biên bản kiểm tra. Tránh cộng dồn hàng chục
+ảnh vượt giới hạn body của gateway; đây không phải giới hạn tổng văn bản/token.
+Pi phải lưu kiểm tra sau từng ảnh và mở lại ảnh/vùng cần xem, không đoán phần đã
+lược. Không đổi provider/model hoặc tự chuyển đổi lại ảnh cũ để khắc phục.
+
+**Tạo ảnh mới:** Pi bắt buộc dùng [draw-image.mjs](../scripts/draw-image.mjs)
+theo [hướng dẫn API](../references/painter-local-api.md). Wrapper giữ raw response,
+fit/padding rồi xuất JPEG quality 95 (4:4:4), 1080 x 1440 trong cùng script;
+không ghép chữ. Không mã hóa lại khi xuất revision; PNG cũ vẫn được nhận nguyên
+bytes. `/files` gửi JPEG/PNG artifact đã chốt, không phải response.bin của API.
+JPEG95 có mất dữ liệu nên Pi vẫn phải kiểm tra chữ/dấu sau nén.
+
+**Lỗi model:** `message_end` có lỗi không được coi là thành công khi Pi settled.
+`/status`, thông báo dừng và `handoff/<run-id>/failure.json` ghi lý do đã lọc
+(HTTP, JSON bị từ chối, mất kết nối, timeout hoặc lỗi manifest), không gửi raw
+provider response hay bí mật. Sau khi xử lý nguyên nhân, nhắn hướng tiếp tục
+cùng tập; `/new` chỉ để mở tập khác, không phải cách bắt buộc để cứu ảnh cũ.
+
+**Gửi Telegram:** ghi `sending` cho cả nhóm trong một transaction trước POST;
+chỉ ghi `sent` và từng message_id cùng lúc sau khi nhận đủ xác nhận. Mất mạng,
+timeout, thiếu xác nhận hoặc crash lúc gửi → cả nhóm `unknown`, không tự retry;
+lỗi Telegram xác định → cả nhóm `failed`. Dừng tại nhóm lỗi để không đảo trang.
 File `pending` an toàn có thể tiếp tục khi khởi động lại. `/resend` là sự cho
-phép gửi lại phần chưa nhận, có thể **trùng ảnh** nếu lần trước Telegram đã
-nhận nhưng mất xác nhận; không có bảo đảm exactly-once. Revision đã chốt vẫn
-gửi lại được sau khi dừng service; không tạo lại ảnh để sửa lỗi bàn giao.
+phép gửi lại phần chưa nhận, có thể **trùng cả album** nếu Telegram đã nhận nhưng
+mất xác nhận; không có bảo đảm exactly-once. Hủy khi đang gửi vẫn ghi xác nhận
+nhóm đang bay nếu nhận được, nhưng không gửi nhóm tiếp theo.
+
+`/files` chủ động mở lại bàn giao cho revision đã chốt mới nhất: đặt lại trạng
+thái gửi của revision đó và chọn document, không đổi ảnh/hash hay gọi Pi. Nếu
+bị gián đoạn, `/resend` tiếp tục dạng tệp, không tự quay về ảnh nén. Revision mới
+vẫn mặc định album; run cũ trước khi nâng cấp giữ kiểu document để tiếp tục an
+toàn. Không tạo lại ảnh để sửa lỗi bàn giao.
 
 ## Kiểm tra và giới hạn
 
@@ -165,17 +200,23 @@ npm test
 npm run check
 ```
 
-Test dùng SQLite thật, subprocess RPC giả và PNG trắng tạo cục bộ trong thư
+Test dùng SQLite thật, subprocess RPC giả và JPEG/PNG tạo cục bộ trong thư
 mục tạm; không gọi Telegram, model hoặc API tạo ảnh. Bao phủ private owner,
 nhận trùng, session/task, revision, hủy/khởi động lại, upload chưa rõ, resend,
 đường dẫn/symlink, file ảnh, đóng băng outbox, khóa tiến trình đồng thời và trace
 10 dòng (quyền truy cập, gộp/edit tin nhắn, ẩn nội dung nhạy cảm, lỗi mạng),
-metadata model `xhigh` chỉ trong session bot, không thay provider/mặc định.
+mức suy luận `high` chỉ trong session bot, không sửa metadata/provider/mặc định;
+cửa sổ ảnh không sửa lịch sử, giới hạn byte, lỗi model trước settlement,
+thông báo lỗi đã lọc và deadline 2 giờ.
+Wrapper được thử với HTTP giả cục bộ và ImageMagick thật: request/reference
+MIME, giữ raw, JPEG95/4:4:4, normalize-only, trạng thái lỗi và không tự retry.
+Kiểm thử album bao phủ multipart/MIME JPEG và PNG, 1/2/10 ảnh, tách nhóm 11 ảnh, giới hạn 10 MB,
+xác nhận thiếu/trùng, hủy nhóm đang gửi, `/files`/`/resend` và run cũ dạng tệp.
 `npm run check` kiểm tra RPC thật nhưng không chứng minh model có thể trả lời
 hay 9Router vẽ được; cần thử một yêu cầu thực từ điện thoại để xác nhận đầu-cuối.
 
 Service kiểm tra task/run, revision, danh sách/thứ tự theo episode snapshot,
-PNG đọc được 1080 x 1440 và hash. **Không chứng minh chữ/nhân vật đúng từ byte
+JPEG/PNG đọc được 1080 x 1440, khớp MIME/đuôi file và hash. **Không chứng minh chữ/nhân vật đúng từ byte
 ảnh**: việc mở ảnh và đối chiếu vẫn do Pi theo WORKFLOW, có giới hạn thị giác.
 Không có hard gate cho ngân sách hoặc API ảnh vì Pi còn dùng bash. Đây là
 adapter cho chủ máy tin cậy, **không phải sandbox**: cùng tài khoản OS, Pi vẫn

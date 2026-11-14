@@ -89,6 +89,7 @@ export class Store {
       this.db.prepare('UPDATE runs SET state=?,revision=? WHERE id=?').run(state, revision, run.id);
       this.inputState(run.input, 'done');
       this.taskState(run.task, state === 'ready' ? 'idle' : state === 'cancelled' ? 'cancelled' : 'needs_attention', phase);
+      if (deliveries.length) this.set(`delivery_format:${run.id}`, 'photo');
       for (const file of deliveries) {
         this.db.prepare('INSERT INTO deliveries VALUES (?,?,?,?,?,NULL)').run(file.run, file.position, file.path, file.hash, 'pending');
       }
