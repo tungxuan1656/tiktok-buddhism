@@ -3,11 +3,17 @@
 Từ yêu cầu của người dùng, tạo một chuỗi slide có mạch, mỗi trang một ý.
 Không tạo bản kịch bản thứ hai trong chat nếu đã lưu đủ ở episode.json.
 
-1. Xác định mode original/adaptation/verbatim. Có nguồn thì kiểm chứng và ghi
-   nguồn. Không tự gán lời do mình viết thành lời Phật hoặc lời kinh.
-2. Mặc định 5 trang, điều chỉnh theo lượng nội dung. Diễn giải thì ngắn, dễ
-   hiểu, không giật gân và không ép thành bài học đạo đức mà nguồn không nói.
-   Nguyên văn thì chia các đoạn liên tiếp, không sửa hay bỏ chữ để ép số trang.
+1. Xác định mode original/adaptation/verbatim. Lời Đức Phật/lời kinh luôn
+   phải nguyên văn theo nguồn/bản dịch đã đối chiếu; không tóm tắt, diễn
+   giải, thay từ hoặc lược chữ trong lời trích. Tách rõ lời bình do Pi viết,
+   không gán thành lời Phật hay thay cho phần nguồn cần trích. Thiếu nguồn
+   chính xác thì hỏi, không dựa vào trí nhớ.
+2. Không có số slide mặc định. Chia theo đúng nội dung, đủ ý và dễ đọc;
+   tối đa 35 ảnh mỗi tập/revision tính cả bìa/trang kết nếu có. Đếm trước
+   khi vẽ, không kéo dài hay rút ngắn nội dung để đạt số trang. Chia nguyên
+   văn thành các đoạn liên tiếp, không sửa/bỏ chữ để ép số trang. Nếu không
+   vừa 35 ảnh mà vẫn dễ đọc, báo cần chia nhiều tập và hỏi phạm vi, không
+   tự cắt nội dung, thu nhỏ chữ hoặc vượt trần.
 3. Mỗi trang viết text cuối, một cảnh ít chi tiết, scene_type và evidence.
    evidence chỉ rõ căn cứ đoạn nguồn, hoặc ghi minh họa/ẩn dụ/hư cấu do Pi đề xuất.
    `text` là nội dung để đăng cho người xem, không phải lời nói với chủ bot.

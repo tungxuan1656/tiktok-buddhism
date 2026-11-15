@@ -23,6 +23,9 @@ nguồn ngoài dùng `source: null`. Hai mode còn lại điền object nguồn,
 
 `verbatim` cần source.file UTF-8 đã đối chiếu, nối text các slide khớp nguồn.
 Không bỏ trống rồi coi như đã xác minh. Không tự điền URL/ấn bản/quyền giả.
+Bất kể mode của tập, lời Đức Phật/lời kinh phải nguyên văn từ nguồn đã đối
+chiếu; phần lời bình phải tách rõ, không gán thành lời Phật. Số slide theo
+đúng nội dung, không có mặc định; tối đa 35 ảnh/tập tính cả bìa/trang kết.
 
 Mỗi slide có `text`, `scene`, `scene_type`, `evidence`, `characters`,
 `image`. `characters` là mảng `{id, version}`; cảnh không có người dùng `[]`.

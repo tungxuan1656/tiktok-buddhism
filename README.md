@@ -11,17 +11,21 @@ rồi bàn giao. Bạn tự đăng TikTok. Không cần điều phối nhiều b
 
 Ví dụ:
 
-> Làm 5 slide về cách lắng nghe trước khi phản ứng. Nội dung ngắn, gần gũi.
+> Minh họa nội dung về cách lắng nghe trước khi phản ứng. Chia trang theo nội dung.
 
 > Minh họa nguyên văn đoạn kinh sau thành slide: [đoạn văn và nguồn].
 
-> Sửa slide 3 của tập vừa làm: ít chữ hơn, giữ nguyên nhân vật.
+> Sửa slide 3 của tập vừa làm: chữ rõ hơn, giữ nguyên lời trích và nhân vật.
 
-Không chỉ định gì thêm: tranh Phật giáo 2D chì màu, nền sáng, chữ nâu,
-5 slide, thành phẩm JPEG quality 95, 1080 × 1440. Bố cục linh hoạt, không chia tỷ lệ vùng
-chữ/tranh cố định; ưu tiên đủ tranh và chữ, rõ ràng, dễ đọc.
-Pi tự chia nội dung và lưu quyết định để lần sau tiếp tục được. Trích nguyên
-văn và diễn giải được phân biệt rõ; không gán lời Pi viết thành lời kinh.
+Tranh Phật giáo 2D chì màu, nền sáng, chữ nâu, thành phẩm JPEG quality 95,
+1080 × 1440. Không có số slide mặc định: chia theo đúng nội dung và độ dễ
+đọc, tối đa 35 ảnh/tập để đăng một bài TikTok, tính cả bìa/trang kết nếu có.
+Bố cục linh hoạt, không chia tỷ lệ vùng chữ/tranh cố định; ưu tiên đầy đủ
+tranh và chữ, rõ ràng. Pi lưu quyết định để lần sau tiếp tục được. Lời Đức
+Phật/lời kinh phải nguyên văn theo nguồn đã đối chiếu, không rút gọn hay
+diễn giải để ép số trang. Lời bình phải tách rõ, không gán thành lời Phật.
+Nếu không vừa trần 35 mà vẫn đủ và dễ đọc, báo cần chia nhiều tập thay vì
+cắt nội dung hoặc thu nhỏ chữ.
 
 ## Giao việc và nhận ảnh bằng điện thoại
 

@@ -261,6 +261,37 @@ test('photo delivery splits eleven slides into an ordered album and one photo', 
   assert.ok(store.deliveries().every(file => file.state === 'sent'));
 });
 
+test('a TikTok episode accepts all 35 slides and delivers four ordered Telegram albums', async t => {
+  const { bridge, store, runner, telegram } = await setup(t);
+  runner.hook = async () => { await fixture(store, 35); };
+  await bridge.receive(message(1, 'Tập 35 trang')); await settled(bridge);
+  const names = Array.from({ length: 35 }, (_, i) => `${String(i + 1).padStart(3, '0')}.png`);
+  assert.deepEqual(telegram.albums.map(album => album.length), [10, 10, 10, 5]);
+  assert.deepEqual(telegram.albums.flat(), names);
+  assert.equal(store.deliveries().length, 35);
+  assert.ok(store.deliveries().every(file => file.state === 'sent'));
+  assert.equal(store.current()!.state, 'idle');
+  assert.equal(runner.calls.length, 1);
+});
+
+test('empty or over-limit TikTok episodes are rejected before any delivery, never truncated', async t => {
+  for (const count of [0, 36]) {
+    const { bridge, store, stateDir, runner, telegram } = await setup(t);
+    let data: Awaited<ReturnType<typeof fixture>>;
+    runner.hook = async () => {
+      data = await fixture(store, 1);
+      data.report.files = Array.from({ length: count }, (_, i) => `output/r01/${String(i + 1).padStart(3, '0')}.png`);
+      await writeFile(join(data.task.dir, 'handoff', data.run.id, 'result.json'), JSON.stringify(data.report));
+    };
+    await bridge.receive(message(1, `Tập ${count} trang`)); await settled(bridge);
+    await assert.rejects(collect(data!.task, data!.run, stateDir), /1-35 ảnh/);
+    assert.equal(telegram.sent.length, 0);
+    assert.equal(store.deliveries().length, 0);
+    assert.equal(store.current()!.state, 'needs_attention');
+    assert.equal(runner.calls.length, 1);
+  }
+});
+
 test('/files sends only the latest revision as original documents; /resend keeps that format without Pi', async t => {
   const { bridge, store, runner, telegram } = await setup(t);
   let revision = 0;

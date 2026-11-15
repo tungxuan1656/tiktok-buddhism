@@ -56,7 +56,7 @@ export async function collect(task: Task, run: Run, stateDir: string): Promise<R
   if (report.status !== 'ready_for_review' || report.checked !== true || !/^r\d{2,}$/.test(report.revision)) {
     throw new Error('Kết quả chưa có xác nhận kiểm tra thị giác hoặc revision hợp lệ');
   }
-  if (!Array.isArray(report.files) || !report.files.length || report.files.length > 20) throw new Error('Danh sách ảnh không hợp lệ (1-20 ảnh)');
+  if (!Array.isArray(report.files) || !report.files.length || report.files.length > 35) throw new Error('Danh sách ảnh không hợp lệ (1-35 ảnh, giới hạn một bài TikTok)');
   const prefix = `output/${report.revision}/`;
   const episode = await json(task.dir, `${prefix}episode.json`);
   if (episode.status !== 'ready_for_review' || !Array.isArray(episode.slides) || episode.slides.length !== report.files.length) {

@@ -51,13 +51,21 @@ bridge dừng thay vì tự xóa nó. Lệnh identify không chạy khi service 
 
 ## Cách dùng bằng điện thoại
 
-Nhắn bình thường: “Làm 5 slide về lắng nghe trước khi phản ứng”. Pi tự làm
+Nhắn bình thường: “Minh họa nguyên văn đoạn kinh sau, chia trang theo nội
+dung và giữ đúng lời trích: [văn bản và nguồn]”. Pi tự làm
 và gửi **album ảnh đúng thứ tự**: 2–10 ảnh/album, một ảnh gửi riêng; hơn 10
 thì chia nhóm. Telegram có thể nén/đổi định dạng ảnh, không bảo đảm giữ nguyên
 chất lượng chữ. Artifact đã chốt vẫn lưu trên máy; `/files` tải revision mới nhất dưới
 dạng document, không tạo lại ảnh. Chỉ hỗ trợ tin nhắn chữ; ảnh/voice/file đầu
-vào chưa được tiếp nhận. Mỗi lượt tối đa 20 slide; ảnh album tối đa 10 MB/ảnh,
-Tệp gốc tối đa 49 MB/file. Ảnh quá giới hạn album dừng gửi để bạn dùng `/files`,
+vào chưa được tiếp nhận. **Mỗi tập/revision tối đa 35 ảnh**, tính cả bìa/trang
+kết nếu có, theo [giới hạn bài đăng ảnh TikTok](https://support.tiktok.com/en/using-tiktok/creating-videos/making-a-post).
+Không có số slide mặc định: số trang theo đúng nội dung và độ dễ đọc. Lời
+Đức Phật/lời kinh phải nguyên văn từ nguồn đã đối chiếu; không rút gọn hay
+diễn giải để ép số trang, lời bình phải tách rõ. Agent đếm khi lập kịch bản;
+service từ chối manifest quá 35, không cắt ảnh để gửi thiếu nội dung. Nếu
+không vừa mà vẫn dễ đọc/giữ nguyên nguồn, bot yêu cầu chốt phạm vi/chia nhiều
+tập. Album Telegram vẫn tối đa 10 ảnh/nhóm: 35 ảnh gửi thành 10 + 10 + 10 + 5.
+Ảnh album tối đa 10 MB/ảnh, tệp gốc tối đa 49 MB/file. Ảnh quá giới hạn album dừng gửi để bạn dùng `/files`,
 không tự giảm chất lượng hoặc âm thầm chuyển sang tệp.
 
 | Lệnh | Ý nghĩa |
@@ -210,7 +218,8 @@ cửa sổ ảnh không sửa lịch sử, giới hạn byte, lỗi model trư�
 thông báo lỗi đã lọc và deadline 2 giờ.
 Wrapper được thử với HTTP giả cục bộ và ImageMagick thật: request/reference
 MIME, giữ raw, JPEG95/4:4:4, normalize-only, trạng thái lỗi và không tự retry.
-Kiểm thử album bao phủ multipart/MIME JPEG và PNG, 1/2/10 ảnh, tách nhóm 11 ảnh, giới hạn 10 MB,
+Kiểm thử album bao phủ multipart/MIME JPEG và PNG, 1/2/10 ảnh, tách nhóm 11 ảnh,
+chấp nhận đủ 35 ảnh theo đúng thứ tự, từ chối 0/36 ảnh trước bàn giao, giới hạn 10 MB,
 xác nhận thiếu/trùng, hủy nhóm đang gửi, `/files`/`/resend` và run cũ dạng tệp.
 `npm run check` kiểm tra RPC thật nhưng không chứng minh model có thể trả lời
 hay 9Router vẽ được; cần thử một yêu cầu thực từ điện thoại để xác nhận đầu-cuối.

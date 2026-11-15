@@ -11,16 +11,32 @@ một lần nhận yêu cầu, một lần bàn giao; không chèn duyệt kịc
   Lưu yêu cầu nguyên gốc; dùng [mẫu tập](templates/episode.json) tạo `episode.json`.
   Qua Telegram, dùng nguyên `episode_dir` do bridge cấp thay vì tự đặt thư mục.
   [Giao thức bridge](bridge/agent.md) bổ sung handoff, không thay các bước này.
-- Mặc định 5 trang, mỗi trang một ý, khoảng 20–40 từ dễ đọc. Đoạn dài thì
-  thêm trang hoặc rút gọn khi được diễn giải, không nhồi chữ để đủ 5 trang.
+- Không có số slide mặc định. Chia trang theo đúng lượng nội dung, nhịp ý
+  và độ dễ đọc; không kéo dài hoặc rút bớt nội dung để đạt một số trang.
+  Đoạn trích dài thì thêm trang tại chỗ ngắt phù hợp, không viết lại lời trích.
+- **Mỗi tập tối đa 35 ảnh trong một revision hoàn chỉnh**, tính cả bìa/trang
+  kết nếu có, theo [giới hạn bài đăng ảnh TikTok](https://support.tiktok.com/en/using-tiktok/creating-videos/making-a-post)
+  (đối chiếu 15/11/2026; [tài liệu TikTok](https://developers.tiktok.com/doc/content-posting-api-reference-photo-post)
+  cũng ghi tối đa 35 ảnh). Đây là trần, không phải số trang bắt buộc; ảnh
+  mẫu, draft và revision cũ không cộng vào số ảnh của bài đăng.
+- Đếm slide trước khi gọi API. Nếu nội dung cần hơn 35 trang để trình bày
+  đầy đủ, dễ đọc, báo cần chia thành nhiều tập và hỏi phạm vi tập này.
+  Không rút gọn/diễn giải lời Đức Phật để ép vào một tập, tự bỏ phần cuối,
+  thiếu lời trích, thu nhỏ chữ hoặc bàn giao hơn 35 ảnh.
 
 Chọn đúng `mode`:
 
 | Mode | Cách làm |
 | --- | --- |
 | `original` | Pi viết theo chủ đề; không gán thành lời kinh/trích dẫn thật. `source` có thể `null`. |
-| `adaptation` | Tóm tắt/diễn giải tài liệu; ghi nguồn và rõ đó là diễn giải. |
+| `adaptation` | Phần diễn giải/lời bình phải nhận diện rõ là của Pi; không thay thế hoặc sửa lời Đức Phật cần trích nguyên văn. |
 | `verbatim` | Giữ nguyên văn bản đã đối chiếu; lưu source.txt UTF-8, nối text các slide phải bằng nguồn. |
+
+**Lời Đức Phật/lời kinh phải nguyên văn**, đúng nguồn và bản dịch đã đối
+chiếu, bất kể mode của tập. Không tóm tắt, diễn giải, thay từ, thêm/bớt chữ
+trong lời trích hoặc ghép câu từ nhiều chỗ thành một câu của Phật. Lời bình
+và giải thích do Pi viết phải tách rõ khỏi lời trích, không gán thành lời
+Phật; không dùng chúng thay cho phần nguồn người dùng yêu cầu.
 
 Nếu chỉ có tên bài kinh, tìm đúng bản dịch; hỏi khi không xác định được bản
 người dùng muốn. Không lấy trí nhớ làm nguồn trích dẫn. Ghi tên, dịch giả/ấn bản

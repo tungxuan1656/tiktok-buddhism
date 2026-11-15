@@ -18,7 +18,10 @@ Không yêu cầu họ điều phối Creator/Painter hoặc duyệt từng bư�
   thiếu và gọi API cho công việc đó. Không gọi API chỉ để đọc/test repo.
   Không cần app, server mới hoặc workflow nhiều agent để làm nội dung.
   Cầu nối Telegram đã được yêu cầu riêng: xem [bridge/README.md](bridge/README.md).
-- Nếu đủ rõ, làm ngay. Mặc định 5 slide, tự điều chỉnh nếu nội dung không vừa.
+- Nếu đủ rõ, làm ngay. Không có số slide mặc định: chia theo đúng nội dung,
+  mỗi trang đủ ý và dễ đọc. Mỗi tập tối đa 35 ảnh để đăng một bài TikTok,
+  tính cả bìa/trang kết nếu có;
+  không tạo vượt trần hoặc cắt mất lời trích để ép vừa (xem WORKFLOW).
   Chỉ hỏi khi thiếu nội dung, không xác định được người/nguồn cần trích chính
   xác, thiếu quyền/truy cập cần thiết hoặc API bị chặn.
 - Nhân vật chưa có: tự thiết kế, tự kiểm tra, lưu JSON và ảnh thật với trạng
@@ -26,9 +29,12 @@ Không yêu cầu họ điều phối Creator/Painter hoặc duyệt từng bư�
   Chỉ ghi `user_approved` khi người dùng thực sự duyệt đúng mẫu.
 - Mọi lượt vẽ/sửa đều gửi lại **ảnh mẫu thật** và đặc điểm nhận diện, không
   chỉ ID/đường dẫn. Dùng đúng snapshot/version của tập, không âm thầm đổi mặt.
-- Được viết/diễn giải theo yêu cầu; không gán lời do mình viết thành lời Phật,
-  nguyên văn kinh hoặc sự kiện lịch sử. Trích dẫn phải có nguồn đã đối chiếu;
-  truyện minh họa tự viết phải ghi rõ là hư cấu/minh họa.
+- Lời Đức Phật/lời kinh phải trích nguyên văn đúng nguồn và bản dịch đã đối
+  chiếu. Không tóm tắt, diễn giải, thay từ hay lược chữ trong lời trích để ép
+  số slide. Lời bình do Pi viết phải tách rõ, không gán thành lời Phật/kinh.
+  Thiếu nguồn chính xác thì hỏi, không lấy trí nhớ thay bản trích. Truyện
+  minh họa tự viết phải ghi rõ là hư cấu/minh họa, không gán thành sự kiện
+  lịch sử.
 - Chữ trên ảnh phải là nội dung sẵn sàng đăng cho người xem, không phải lời
   trao đổi với chủ bot. Không đưa mã tập/phần tự đặt, nhãn quản lý, trạng thái
   hay câu như "Nguyên văn theo bản bạn cung cấp" vào `text`. Nguồn trên ảnh

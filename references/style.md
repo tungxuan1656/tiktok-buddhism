@@ -26,8 +26,10 @@
 - Chữ nâu sẫm gần `#4B2F1E`, nét rõ, mềm, canh giữa, lề thoáng. Ưu tiên
   kiểu chữ dễ đọc hỗ trợ tiếng Việt đầy đủ, đồng nhất qua các trang.
 - Mục tiêu tương đương cỡ 44–52 px trên 1080 px ngang, không chữ bé li ti.
-  Đây là chỉ dẫn hình ảnh, không phải tham số model bảo đảm. Thường 20–40 từ,
-  khoảng 4–6 dòng; nhiều hơn thì chia trang trước khi vẽ.
+  Đây là chỉ dẫn hình ảnh, không phải tham số model bảo đảm. Chia trang
+  theo nội dung và độ dễ đọc, không có số slide mặc định. Lời Đức Phật/lời
+  kinh phải giữ nguyên văn từ nguồn đã đối chiếu; tăng trang khi cần, không
+  rút gọn lời trích hoặc thu nhỏ chữ để ép vừa. Tối đa 35 ảnh/tập theo WORKFLOW.
 - Không tự sửa dấu, đổi từ, thêm dấu ngoặc kép hoặc viết hoa toàn bộ. Ngắt
   dòng được phép để vừa bố cục, không bỏ/thêm nội dung.
 - Pi mở ảnh, đọc từng dòng và so với text chuẩn. Lỗi chữ/dấu thì sửa ảnh,
