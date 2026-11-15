@@ -4,7 +4,9 @@
 khi chưa điền. Tạo ảnh chân dung/đủ thân rõ diện mạo để dùng làm tham chiếu.
 Ảnh mẫu không chữ, ưu tiên nhìn rõ diện mạo và trang phục nhân vật.
 Lưu prompt rồi gọi `scripts/draw-image.mjs` theo [hướng dẫn API](../references/painter-local-api.md);
-xem JPEG95 sau nén, không tự gọi API hoặc đổi/nén ngoài wrapper.
+dùng `--character EPISODE_JSON` trước prompt/draft/reference: lưu kịch bản
+1-35 slide trước cả khi tạo mẫu. Xem JPEG95 sau nén; không tự gọi API hoặc
+đổi/nén ngoài wrapper.
 
 ---
 

@@ -64,7 +64,9 @@ Mỗi người lặp lại có hồ sơ riêng, không dùng một mã nhóm đ�
 ## Môi trường và cách nhận kết quả
 
 Pi cần truy cập được 9Router local, Node 24.19+ và `magick` có sẵn.
-Mọi lượt vẽ/sửa dùng [scripts/draw-image.mjs](scripts/draw-image.mjs): gọi API,
+Mọi lượt vẽ/sửa dùng [scripts/draw-image.mjs](scripts/draw-image.mjs): bắt buộc
+nhận kịch bản JSON và số slide (hoặc chế độ nhân vật), kiểm tra 1-35 trang
+trước khi gọi API,
 giữ raw response rồi xuất JPEG95 trong cùng script; không cài dependency mới.
 `magick` chỉ fit/padding và nén/đổi định dạng, **không thêm chữ**. Không mã hóa
 lại khi xuất revision; PNG và ảnh mẫu cũ giữ nguyên. Khóa API nếu cần
@@ -73,7 +75,11 @@ chỉ cấp qua môi trường, không đặt vào repo/chat.
 Pi mở từng ảnh để đối chiếu chữ, dấu tiếng Việt, bố cục và nhân vật; sai thì
 sửa trước khi bàn giao. Kết quả nằm trong `episodes/<tên-tập>/output/r01/`.
 Pi đưa ảnh trong phiên chat nếu giao diện hỗ trợ, nếu không sẽ đưa đường dẫn
-để bạn mở. Bạn yêu cầu sửa thì giữ r01, làm r02, không ghi đè.
+để bạn mở. Bạn yêu cầu sửa thì tạm giữ bản trước, làm revision mới. Sau khi
+Telegram xác nhận gửi đủ bản mới, bridge dọn output/draft/prompt và dữ liệu
+tạm cũ; chỉ giữ bản mới nhất, kịch bản/nguồn/notes/mẫu nhân vật và dữ liệu
+gửi lại cần thiết. Tác vụ lỗi hoặc API chưa rõ kết quả không bị dọn. Lịch sử
+Pi không bị xóa; ít file hơn không tự rút ngắn hội thoại đã có.
 
 Kho `characters/` được lưu trong Git cùng repo khi bạn yêu cầu commit.
 Dữ liệu `episodes/` mặc định không commit: sao lưu riêng khi chuyển máy.

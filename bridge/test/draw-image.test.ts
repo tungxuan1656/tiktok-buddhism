@@ -15,9 +15,12 @@ async function setup(t: test.TestContext) {
   const prompt = join(root, 'prompt.txt');
   execFileSync('magick', ['-size', '1024x1536', 'gradient:white-wheat', raw]);
   await writeFile(prompt, 'CHỮ CẦN IN\nGiữ nguyên chữ và dấu.\n');
-  const draw = (await import('../../scripts/draw-image.mjs' as string)).draw;
+  const episode = join(root, 'episode.json');
+  await writeFile(episode, JSON.stringify({ slides: [{ text: 'Giữ nguyên chữ và dấu.' }] }));
+  const production = (await import('../../scripts/draw-image.mjs' as string)).draw;
+  const draw = (options: Record<string, unknown>) => production({ episodeFile: episode, slide: 1, ...options });
   const status = async (work: string) => JSON.parse(await readFile(join(work, 'status.json'), 'utf8'));
-  return { root, raw, prompt, draw, status };
+  return { root, raw, prompt, draw, status, episode };
 }
 
 test('wrapper posts once with real reference MIME, preserves raw, then produces JPEG95 at 1080x1440', async t => {
@@ -49,6 +52,10 @@ test('wrapper posts once with real reference MIME, preserves raw, then produces 
   assert.equal(calls, 1);
   assert.equal(output, join(work, 'image.jpg'));
   assert.deepEqual(await readFile(join(work, 'response.bin')), source);
+  const savedRequest = JSON.parse(await readFile(join(work, 'request.json'), 'utf8'));
+  assert.equal(savedRequest.images, undefined);
+  assert.equal(savedRequest.reference_count, 2);
+  assert.equal(savedRequest.plan.slide, 1);
   assert.equal(execFileSync('magick', ['identify', '-format', '%m %w %h %Q %[jpeg:sampling-factor]', output], { encoding: 'utf8' }), 'JPEG 1080 1440 95 1x1,1x1,1x1');
   assert.equal((await status(work)).state, 'succeeded');
   assert.equal((await status(work)).source.mime, 'image/png');
@@ -90,4 +97,33 @@ test('API and conversion errors have durable safe states, with no automatic retr
   const invalid = join(root, 'invalid');
   await assert.rejects(draw({ promptFile: join(root, 'missing'), workDir: invalid, request: () => { throw new Error('must not call'); } }));
   assert.equal((await status(invalid)).state, 'invalid_input');
+});
+
+
+test('saved JSON gates every API request, including characters; invalid scripts never POST', async t => {
+  const { root, raw, prompt, draw, status, episode } = await setup(t);
+  const source = await readFile(raw);
+  let calls = 0;
+  const request = async () => { calls++; return new Response(source); };
+  const pages = (n: number) => ({ slides: Array.from({ length: n }, () => ({ text: 'Nguyên văn.' })) });
+  const invalid = ['{', JSON.stringify(pages(0)), JSON.stringify(pages(36)), JSON.stringify({ slides: [{ text: '' }] })];
+  for (const [index, text] of invalid.entries()) {
+    await writeFile(episode, text);
+    const workDir = join(root, `invalid-plan-${index}`);
+    await assert.rejects(draw({ promptFile: prompt, workDir, request }), /script_invalid|script_count|slide_invalid/);
+    assert.equal((await status(workDir)).state, 'invalid_input');
+    assert.equal(calls, 0);
+  }
+  await writeFile(episode, JSON.stringify(pages(35)));
+  for (const slide of [0, 36, 1.5, undefined]) {
+    await assert.rejects(draw({ promptFile: prompt, workDir: join(root, `bad-index-${slide}`), slide, request }), /slide_invalid/);
+  }
+  assert.equal(calls, 0);
+  await draw({ promptFile: prompt, workDir: join(root, 'slide-35'), slide: 35, request });
+  await draw({ promptFile: prompt, workDir: join(root, 'character'), character: true, slide: undefined, request });
+  assert.equal(calls, 2);
+  await writeFile(episode, JSON.stringify(pages(36)));
+  await assert.rejects(draw({ promptFile: prompt, workDir: join(root, 'bad-character'), character: true, slide: undefined, request }), /script_count/);
+  assert.equal(calls, 2);
+  assert.throws(() => execFileSync(process.execPath, [script, prompt, join(root, 'legacy')], { stdio: 'pipe' }));
 });

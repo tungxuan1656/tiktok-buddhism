@@ -140,7 +140,7 @@ Mac và 9Router vẫn phải bật, không ngủ; PM2 không giữ máy thức h
 ## Dữ liệu và phục hồi
 
 - `episodes/telegram-<task-id>/`: episode.json, nguồn, notes, snapshot nhân vật,
-  drafts và các `output/rNN/` bất biến; `handoff/<run-id>/` chứa request/result
+  drafts tạm và `output/rNN/` mới nhất đã gửi đủ; `handoff/<run-id>/` chứa request/result
   và `failure.json` với loại lỗi/lý do an toàn nếu lượt bị ngắt
   theo [giao thức Pi](agent.md).
 - `.telegram/state.sqlite`: inbox/update offset chống nhận trùng, session/task,
@@ -153,9 +153,30 @@ Mac và 9Router vẫn phải bật, không ngủ; PM2 không giữ máy thức h
 
 SQLite và filesystem không tạo một giao dịch chung: file outbox chưa commit
 DB sau crash có thể còn dư, nhưng không tự gửi hay gọi lại API. Giữ lại để
-kiểm tra, không dọn dữ liệu mặc định. Sao lưu `.telegram/`, `episodes/` và
+kiểm tra nếu chưa xác định được kết quả. Sao lưu `.telegram/`, `episodes/` và
 `characters/` khi bridge đã dừng; không chỉ copy SQLite khi WAL đang hoạt động.
 Các thư mục runtime, node_modules và .env đều bị Git bỏ qua.
+
+**Lưu tối thiểu:** sau khi run mới nhất tự kiểm tra và Telegram xác nhận đủ
+ảnh, bridge giữ output/snapshot, kịch bản hiện tại, nguồn, notes, references,
+handoff và outbox mới nhất. Dọn output cũ, drafts/raw, prompts và handoff/outbox
+đã bị thay thế; `/files`/`/resend` vẫn dùng bytes mới nhất, không gọi Pi.
+Không dọn khi run sau còn lỗi/chưa hoàn tất, gửi thiếu, file đổi hash hoặc
+draft API unknown/in_flight/response chưa xử lý. Thư mục còn chứa nguồn được
+tham chiếu (kể cả qua symlink) được giữ. Nguồn/kho nhân vật/hồ sơ lịch sử và
+Pi sessions không bị xóa; dọn file không tự rút ngắn context hội thoại.
+
+Dọn cả các tập cũ đã hoàn tất bằng cùng cổng an toàn, không gọi Telegram/API:
+
+```sh
+pm2 stop buddhism-telegram
+npm run prune             # Xem trước các mục sẽ dọn và tập phải giữ
+npm run prune -- --apply   # Xóa thật; không thể rollback bản đã dọn
+npm run service:start
+```
+
+Pi không tự xóa file qua bash. Luôn đọc kịch bản/output hiện hành thay vì
+quét mọi lịch sử; bridge sở hữu việc dọn sau bàn giao.
 
 **Crash/timeout Pi:** run đang chạy thành `interrupted`/`needs_attention`;
 không tự phát lại prompt, không tự retry ảnh. Tác vụ mới sau đó phải đọc
@@ -173,7 +194,10 @@ Pi phải lưu kiểm tra sau từng ảnh và mở lại ảnh/vùng cần xem,
 lược. Không đổi provider/model hoặc tự chuyển đổi lại ảnh cũ để khắc phục.
 
 **Tạo ảnh mới:** Pi bắt buộc dùng [draw-image.mjs](../scripts/draw-image.mjs)
-theo [hướng dẫn API](../references/painter-local-api.md). Wrapper giữ raw response,
+theo [hướng dẫn API](../references/painter-local-api.md). Phải lưu đầy đủ
+kịch bản JSON trước: `--slide EPISODE_JSON N ...` hoặc `--character EPISODE_JSON
+...`; wrapper chặn trước POST nếu JSON không có 1-35 slide/text hoặc N ngoài
+kịch bản. Kiểm tra ảnh cuối chỉ là đối chiếu lại. Wrapper giữ raw response,
 fit/padding rồi xuất JPEG quality 95 (4:4:4), 1080 x 1440 trong cùng script;
 không ghép chữ. Không mã hóa lại khi xuất revision; PNG cũ vẫn được nhận nguyên
 bytes. `/files` gửi JPEG/PNG artifact đã chốt, không phải response.bin của API.

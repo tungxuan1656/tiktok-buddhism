@@ -7,15 +7,16 @@ Mỗi lần làm một thư mục, Pi tự tạo; người dùng không phải �
 	  notes.md            Yêu cầu gốc, quyết định, tự kiểm tra, phản hồi/duyệt
 	  source.txt          Chỉ cần khi trích nguyên văn
 	  references/         Snapshot JSON + ảnh nhân vật đã dùng
-	  prompts/            Prompt thực tế từng lượt
-	  drafts/             Request, phản hồi gốc, ảnh AI tạo cả tranh/chữ
-	  output/r01/         001.jpg… và episode.json snapshot, bản để người dùng xem
-	  output/r02/         Revision mới, không ghi đè r01
+	  prompts/            Prompt tạm khi đang làm
+	  drafts/             Raw/request/status/ảnh tạm, giữ khi chưa bàn giao xong
+	  output/rNN/         001.jpg… và episode.json của bản mới nhất đã gửi đủ
 
 Chỉ tạo thứ có dùng. `episode.json` là kịch bản duy nhất, không cần thêm
 storyboard/source/review JSON riêng khi thông tin đã có ở đó và notes.
-Mỗi revision giữ một bản episode JSON để biết đúng chữ, ảnh và phiên bản nhân
-vật đã dùng. Văn bản trong JSON là nội dung chuẩn, không phải bản tự chép lại
+Revision đang làm tạm giữ bản trước để phục hồi. Sau khi bản mới đã gửi đủ
+qua Telegram, bridge dọn revision cũ/draft/prompt và handoff/outbox bị thay
+thế; chỉ giữ snapshot mới nhất để biết đúng chữ, ảnh và phiên bản nhân vật.
+Nguồn, notes, references và file còn được dùng làm nguồn không bị dọn. Văn bản trong JSON là nội dung chuẩn, không phải bản tự chép lại
 từ ảnh model tạo sai.
 
 - `draft`: đang làm; `ready_for_review`: Pi đã đọc/so đủ ảnh sau nén, chờ người dùng;
@@ -28,7 +29,7 @@ từ ảnh model tạo sai.
   không thêm renderer ghép chữ hoặc sửa nguồn để hợp thức hóa lỗi.
 - Lưu kết quả tự kiểm tra từng trang vào notes: chữ, nhân vật, bố cục, lỗi/lượt
   sửa, đường dẫn JPEG/PNG đã xem. JPEG mới do wrapper xuất quality 95; không
-  mã hóa lại khi sao chép vào output, không sửa PNG/revision cũ. Không gọi tập thiếu ảnh/ảnh lỗi là hoàn thành.
+  mã hóa lại khi sao chép vào output, không nén lại PNG cũ, không xóa bản cần phục hồi trước khi bản mới gửi đủ. Không gọi tập thiếu ảnh/ảnh lỗi là hoàn thành.
 - Đưa ảnh/đường dẫn trực tiếp trong phiên Pi, không tự đăng/gửi dịch vụ khác.
   Ngoại lệ tác vụ Telegram: bridge gửi album ảnh về đúng private chat chủ bot
   sau khi kiểm tra manifest; `/files` gửi nguyên tệp JPEG/PNG đã chốt vì album có thể bị nén.
@@ -39,5 +40,7 @@ Tác vụ Telegram dùng `telegram-<task-id>/` với cấu trúc trên và thêm
 và tiến độ gửi nằm riêng trong `.telegram/`; xem [bridge](../bridge/README.md).
 
 Dữ liệu tập bị Git bỏ qua mặc định: sao lưu riêng khi chuyển máy. Git không
-khôi phục được file chưa commit; không dọn/xóa dữ liệu tùy tiện. Giữ nguyên tập
+khôi phục được file chưa commit. Chính sách dọn cả tập Telegram cũ đã hoàn
+tất xem [WORKFLOW](../WORKFLOW.md); tác vụ lỗi/unknown vẫn giữ dữ liệu. Bản
+đã dọn không rollback được, lịch sử Pi không tự mất theo output. Giữ nguyên tập
 thử `local-api-e2e-20261111-v1` làm hồ sơ lịch sử, không phải mẫu bắt buộc.

@@ -31,5 +31,7 @@ Không tạo bản kịch bản thứ hai trong chat nếu đã lưu đủ ở e
    như độc giả không biết cuộc trò chuyện: bỏ chữ thừa và lời nội bộ trước
    khi khóa text; không đợi ảnh đã vẽ mới xét nội dung có phù hợp đăng không.
 
-Lưu theo templates/episode.json rồi tự tiếp tục vẽ. Chỉ hỏi nếu thiếu thông tin
+Lưu toàn bộ slides[] theo templates/episode.json trước mọi lượt API. Wrapper
+bắt buộc nhận file JSON và số slide (hoặc chế độ nhân vật), kiểm tra 1-35
+trang trước POST; không vẽ trang ngoài kịch bản. Sau đó tự tiếp tục vẽ. Chỉ hỏi nếu thiếu thông tin
 thật sự ảnh hưởng tính đúng đắn; không hỏi duyệt kịch bản theo mặc định.

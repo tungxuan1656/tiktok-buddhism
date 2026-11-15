@@ -8,6 +8,7 @@ import type { Update } from './telegram.ts';
 import { PiFailure } from './pi.ts';
 import type { Runner } from './pi.ts';
 import { Trace } from './trace.ts';
+import { pruneTask } from './retention.ts';
 
 const HELP = 'Nhắn yêu cầu làm slide; Pi tự viết, vẽ và kiểm tra rồi gửi album ảnh đúng thứ tự. Tin nhắn sau dùng để sửa cùng tập.\n/status: tiến độ\n/trace_on: bật theo dõi trực tiếp (10 dòng)\n/trace_off: tắt theo dõi trực tiếp\n/log: 10 dòng mới nhất\n/cancel: dừng, giữ dữ liệu\n/done: kết thúc tập\n/new: hội thoại và tập mới\n/files: tải tệp ảnh gốc của revision mới nhất (Telegram có thể nén ảnh trong album)\n/resend: gửi lại phần chưa nhận, giữ kiểu ảnh/tệp của lần bàn giao (có thể trùng nếu Telegram đã nhận nhưng mất xác nhận).\nChỉ hỗ trợ tin nhắn chữ; bạn tự đăng TikTok.';
 
@@ -173,6 +174,7 @@ export class Bridge {
         await this.deliver(run.id, controller.signal);
         if (controller.signal.aborted) throw new Error('Đã hủy khi bàn giao');
         this.deliveryPhase(task, run);
+        await this.retainLatest(task);
         await this.say(`Tập ${task.id}, ${result.revision}: ${result.message}\nẢnh ở trạng thái ready_for_review, chưa tự coi là bạn đã duyệt. Nếu thiếu file, dùng /status rồi /resend.`);
       } else {
         this.store.holdInputs();
@@ -211,10 +213,20 @@ export class Bridge {
       if (controller.signal.aborted) {
         this.store.finish(run, 'ready', 'Bàn giao tạm dừng; /resend dùng lại ảnh đã chốt', run.revision);
         if (controller.signal.reason === 'user') this.store.taskState(task.id, 'cancelled', 'Đã hủy bàn giao; giữ ảnh đã chốt');
-      } else this.deliveryPhase(task, run);
+      } else {
+        this.deliveryPhase(task, run);
+        await this.retainLatest(task);
+      }
       await this.trace.flush();
       if (this.active === active) this.active = undefined;
     });
+  }
+  async retainLatest(task: Task) {
+    try {
+      const current = this.store.db.prepare('SELECT * FROM tasks WHERE id=?').get(task.id) as Task;
+      const result = await pruneTask(this.store, current, this.stateDir);
+      if (result.removed) this.trace.add('Đã dọn bản cũ/draft; giữ bản mới nhất đã gửi đủ');
+    } catch { console.error('Chưa dọn được dữ liệu cũ; giữ file để tránh mất dữ liệu.'); }
   }
   deliveryPhase(task: Task, run: Run) {
     const complete = this.store.deliveries(run.id).every(file => file.state === 'sent');

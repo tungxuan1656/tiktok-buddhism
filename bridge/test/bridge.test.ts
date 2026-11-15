@@ -11,6 +11,7 @@ import { Telegram, TelegramError } from '../telegram.ts';
 import { PiFailure } from '../pi.ts';
 import type { Runner } from '../pi.ts';
 import { collect, hash, imageBytes } from '../artifacts.ts';
+import { pruneTask } from '../retention.ts';
 
 const message = (id: number, text: string, owner = 123, type = 'private') => ({ update_id: id, message: { from: { id: owner }, chat: { id: owner, type }, text } });
 const deferred = () => {
@@ -120,7 +121,7 @@ test('only configured private owner is accepted; duplicate updates never generat
   assert.deepEqual(telegram.documents, []);
 });
 
-test('ordinary follow-ups reuse task/session; /done keeps session; /new changes it without deleting old files', async t => {
+test('ordinary follow-ups reuse task/session; /done keeps session; /new preserves each task latest output', async t => {
   const { bridge, store, runner } = await setup(t);
   runner.hook = async () => {
     const count = store.db.prepare('SELECT COUNT(*) AS n FROM runs WHERE task=?').get(store.current()!.id) as { n: number };
@@ -130,7 +131,7 @@ test('ordinary follow-ups reuse task/session; /done keeps session; /new changes 
   const first = store.current()!;
   await bridge.receive(message(2, 'Sửa câu cuối')); await settled(bridge);
   assert.equal(store.current()!.id, first.id);
-  assert.equal(store.deliveries().length, 2);
+  assert.equal(store.deliveries().length, 1);
   await bridge.receive(message(3, '/done'));
   await bridge.receive(message(4, 'Tập tiếp')); await settled(bridge);
   assert.notEqual(store.current()!.id, first.id);
@@ -138,7 +139,7 @@ test('ordinary follow-ups reuse task/session; /done keeps session; /new changes 
   await bridge.receive(message(5, '/new'));
   await bridge.receive(message(6, 'Tập mới')); await settled(bridge);
   assert.notEqual(runner.calls[0], runner.calls[3]);
-  assert.ok(await readFile(join(first.dir, 'output/r01/001.png')));
+  assert.ok(await readFile(join(first.dir, 'output/r02/001.png')));
 });
 
 test('cancel fences late results, holds queued additions, and refuses /new while busy', async t => {
@@ -304,7 +305,7 @@ test('/files sends only the latest revision as original documents; /resend keeps
   let attempts = 0;
   telegram.sendHook = async () => { if (++attempts === 2) throw new TelegramError(true); };
   await bridge.receive(message(4, '/files')); await settled(bridge);
-  assert.deepEqual(store.deliveries().map(file => file.state), ['sent', 'sent', 'sent', 'unknown']);
+  assert.deepEqual(store.deliveries().map(file => file.state), ['sent', 'unknown']);
   store.recover();
   telegram.sendHook = undefined;
   await bridge.receive(message(5, '/resend')); await settled(bridge);
@@ -460,4 +461,111 @@ test('trace commands work while Pi is busy, respect owner auth and show only the
   await bridge.receive(message(7, '/log'));
   assert.match(telegram.texts.at(-1)!, /one more safe event/);
   await bridge.receive(message(8, '/cancel'));
+});
+
+
+test('only a fully delivered replacement prunes old outputs/drafts and keeps sources, references and resend bytes', async t => {
+  const { bridge, store, runner, telegram, stateDir } = await setup(t);
+  let revision = 0;
+  runner.hook = async () => { await fixture(store, 2, `r0${++revision}`); };
+  await bridge.receive(message(1, 'Tập')); await settled(bridge);
+  const task = store.current()!;
+  const oldRun = (store.db.prepare('SELECT * FROM runs').get() as Run).id;
+  await mkdir(join(task.dir, 'drafts', 'old'), { recursive: true });
+  await writeFile(join(task.dir, 'drafts', 'old', 'status.json'), '{"state":"succeeded"}');
+  await writeFile(join(task.dir, 'source.txt'), 'Nguyên văn nguồn.');
+  await writeFile(join(task.dir, 'notes.md'), 'Kiểm tra đã lưu.');
+  await mkdir(join(task.dir, 'references'), { recursive: true });
+  await writeFile(join(task.dir, 'references', 'identity.json'), '{}');
+  telegram.sendHook = async () => { throw new TelegramError(true); };
+  await bridge.receive(message(2, 'Sửa')); await settled(bridge);
+  assert.ok(await readFile(join(task.dir, 'output/r01/001.png')));
+  assert.ok(await readFile(join(task.dir, 'drafts/old/status.json')));
+  telegram.sendHook = undefined;
+  await bridge.receive(message(3, '/resend')); await settled(bridge);
+  await assert.rejects(readFile(join(task.dir, 'output/r01/001.png')), { code: 'ENOENT' });
+  await assert.rejects(readFile(join(task.dir, 'drafts/old/status.json')), { code: 'ENOENT' });
+  await assert.rejects(readFile(join(stateDir, 'outbox', oldRun, '001.png')), { code: 'ENOENT' });
+  assert.ok(await readFile(join(task.dir, 'output/r02/001.png')));
+  assert.equal(await readFile(join(task.dir, 'source.txt'), 'utf8'), 'Nguyên văn nguồn.');
+  assert.ok(await readFile(join(task.dir, 'notes.md')));
+  assert.ok(await readFile(join(task.dir, 'references/identity.json')));
+  assert.equal(store.deliveries().length, 2);
+  await bridge.receive(message(4, '/files')); await settled(bridge);
+  assert.equal(telegram.documents.length, 2);
+  assert.equal(runner.calls.length, 2);
+});
+
+test('unresolved API drafts keep old output and diagnostics even after a new album is acknowledged', async t => {
+  const { bridge, store, runner } = await setup(t);
+  let revision = 0;
+  runner.hook = async () => {
+    await fixture(store, 1, `r0${++revision}`);
+    const dir = join(store.current()!.dir, 'drafts', 'unknown');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'status.json'), '{"state":"unknown"}');
+  };
+  await bridge.receive(message(1, 'Tập')); await settled(bridge);
+  await bridge.receive(message(2, 'Sửa')); await settled(bridge);
+  const dir = store.current()!.dir;
+  assert.ok(await readFile(join(dir, 'output/r01/001.png')));
+  assert.ok(await readFile(join(dir, 'drafts/unknown/status.json')));
+  assert.equal(store.deliveries().length, 2);
+});
+
+test('retention protects source dependencies from latest/older snapshots and root/reference symlinks', async t => {
+  for (const variant of ['latest', 'older', 'older-draft', 'root-link', 'reference-link']) {
+    const { bridge, store, runner, stateDir } = await setup(t);
+    runner.hook = async () => { await fixture(store, 1); };
+    await bridge.receive(message(1, 'Tập')); await settled(bridge);
+    const task = store.current()!;
+    const source = variant.includes('link') || variant === 'older-draft' ? 'drafts/original/source.txt' : 'output/r01/source.txt';
+    await mkdir(join(task.dir, 'drafts', 'original'), { recursive: true });
+    await writeFile(join(task.dir, source), 'Nguồn phải còn nguyên.');
+    if (variant.startsWith('older')) {
+      const path = join(task.dir, 'output/r01/episode.json');
+      const episode = JSON.parse(await readFile(path, 'utf8'));
+      await writeFile(path, JSON.stringify({ ...episode, source: { file: source } }));
+    } else if (variant.includes('link')) {
+      const path = variant === 'root-link' ? 'source.txt' : 'references/CUSI_01/v1/source.txt';
+      await mkdir(join(task.dir, 'references/CUSI_01/v1'), { recursive: true });
+      await symlink(join(task.dir, source), join(task.dir, path));
+    }
+    runner.hook = async () => {
+      await fixture(store, 1, 'r02');
+      if (variant === 'latest') {
+        const path = join(task.dir, 'output/r02/episode.json');
+        const episode = JSON.parse(await readFile(path, 'utf8'));
+        await writeFile(path, JSON.stringify({ ...episode, source: { file: source } }));
+      }
+    };
+    await bridge.receive(message(2, 'Sửa')); await settled(bridge);
+    assert.equal(await readFile(join(task.dir, source), 'utf8'), 'Nguồn phải còn nguyên.', variant);
+    if (variant.includes('link') || variant === 'older-draft') await assert.rejects(readFile(join(task.dir, 'output/r01/001.png')), { code: 'ENOENT' });
+    await pruneTask(store, store.current()!, stateDir);
+    assert.equal(await readFile(join(task.dir, source), 'utf8'), 'Nguồn phải còn nguyên.', `${variant}: second sweep`);
+    assert.equal(store.deliveries().length, 1);
+  }
+});
+
+test('local sweep previews without writes then cleans an already-delivered closed task without Pi or Telegram', async t => {
+  const { bridge, store, runner, telegram, stateDir } = await setup(t);
+  runner.hook = async () => { await fixture(store, 1); };
+  await bridge.receive(message(1, 'Tập')); await settled(bridge);
+  const task = store.current()!;
+  await mkdir(join(task.dir, 'output/r00'), { recursive: true });
+  await writeFile(join(task.dir, 'output/r00/old.txt'), 'old');
+  await bridge.receive(message(2, '/done'));
+  const closed = store.db.prepare('SELECT * FROM tasks WHERE id=?').get(task.id) as typeof task;
+  const messages = telegram.texts.length;
+  const preview = await pruneTask(store, closed, stateDir, false);
+  assert.equal(preview.removed, 1);
+  assert.equal(await readFile(join(task.dir, 'output/r00/old.txt'), 'utf8'), 'old');
+  assert.equal((await pruneTask(store, closed, stateDir)).removed, 1);
+  await assert.rejects(readFile(join(task.dir, 'output/r00/old.txt')), { code: 'ENOENT' });
+  assert.ok(await readFile(join(task.dir, 'output/r01/001.png')));
+  assert.equal((await pruneTask(store, closed, stateDir)).removed, 0);
+  assert.equal(runner.calls.length, 1);
+  assert.equal(telegram.sent.length, 1);
+  assert.equal(telegram.texts.length, messages);
 });

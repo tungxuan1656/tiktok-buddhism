@@ -8,6 +8,8 @@ import { Telegram, TelegramError } from './telegram.ts';
 import { PiRunner } from './pi.ts';
 import { Bridge } from './bridge.ts';
 import { acquireLock } from './lock.ts';
+import { pruneTask } from './retention.ts';
+import type { Task } from './store.ts';
 
 process.umask(0o077);
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -24,6 +26,15 @@ async function main() {
   let store: Store | undefined;
   const runner = new PiRunner(root, stateDir);
   try {
+    if (process.argv.includes('--prune')) {
+      store = new Store(join(stateDir, 'state.sqlite'));
+      const tasks = store.db.prepare('SELECT * FROM tasks').all() as Task[];
+      for (const task of tasks) {
+        const result = await pruneTask(store, task, stateDir, process.argv.includes('--apply'));
+        console.log(JSON.stringify({ task: task.id, mode: process.argv.includes('--apply') ? 'apply' : 'preview', ...result }));
+      }
+      return;
+    }
     if (process.argv.includes('--identify')) {
       if (!validToken) throw new Error('Thiếu TELEGRAM_BOT_TOKEN; cấu hình cục bộ, không gửi token vào chat');
       const updates = await new Telegram(token, 0).poll(0);

@@ -9,6 +9,7 @@
     "start": "node --env-file-if-exists=.env bridge/main.ts",
     "check": "node --env-file-if-exists=.env bridge/main.ts --check",
     "identify": "node --env-file-if-exists=.env bridge/main.ts --identify",
+    "prune": "node bridge/main.ts --prune",
     "service:start": "pm2 start ecosystem.config.cjs --only buddhism-telegram",
     "test": "node --test bridge/test/*.test.ts",
     "typecheck": "tsc --noEmit"

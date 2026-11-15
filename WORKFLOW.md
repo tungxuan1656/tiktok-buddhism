@@ -19,7 +19,10 @@ một lần nhận yêu cầu, một lần bàn giao; không chèn duyệt kịc
   (đối chiếu 15/11/2026; [tài liệu TikTok](https://developers.tiktok.com/doc/content-posting-api-reference-photo-post)
   cũng ghi tối đa 35 ảnh). Đây là trần, không phải số trang bắt buộc; ảnh
   mẫu, draft và revision cũ không cộng vào số ảnh của bài đăng.
-- Đếm slide trước khi gọi API. Nếu nội dung cần hơn 35 trang để trình bày
+- Lưu đầy đủ `slides[]` vào episode.json rồi mới vẽ. Wrapper đọc JSON trước
+  mỗi POST, từ chối kịch bản ngoài 1-35 slide hoặc số trang không có trong
+  kịch bản; tạo mẫu nhân vật cũng phải có kịch bản hợp lệ. Đây là cổng trước
+  API; đếm ảnh bàn giao chỉ để đối chiếu lại. Nếu nội dung cần hơn 35 trang để trình bày
   đầy đủ, dễ đọc, báo cần chia thành nhiều tập và hỏi phạm vi tập này.
   Không rút gọn/diễn giải lời Đức Phật để ép vào một tập, tự bỏ phần cuối,
   thiếu lời trích, thu nhỏ chữ hoặc bàn giao hơn 35 ảnh.
@@ -143,7 +146,8 @@ từ pixel. Giữ văn bản gốc trong repo, không tuyên bố kiểm tra ả
 Wrapper đã xuất JPEG95 1080 × 1440, chỉ fit + padding, không thêm chữ bằng
 phần mềm, không crop hoặc kéo méo. Kiểm tra chữ sau nén; sao chép nguyên bytes
 ảnh đạt sang output, không mã hóa JPEG thêm lần nữa. Mở lại **từng ảnh cuối**
-để chắc không mờ/chặt chữ. PNG và revision cũ giữ nguyên, vẫn dùng được.
+để chắc không mờ/chặt chữ. Không nén lại PNG cũ; giữ bản trước khi bản
+thay thế chưa được gửi đủ hoặc còn lỗi.
 
 Lưu `output/r01/001.jpg`… và snapshot `episode.json` của revision. Ghi kết quả
 tự kiểm tra/giới hạn vào notes, đặt `ready_for_review` chỉ khi đủ trang đã đạt.
@@ -154,7 +158,24 @@ bridge kiểm tra rồi gửi album ảnh về đúng private chat chủ bot; Te
 thể nén ảnh, `/files` gửi nguyên JPEG/PNG đã chốt, không phải response API thô. Không dùng việc gửi thành công hoặc
 agent_settled làm bằng chứng đã đạt chất lượng.
 
-Người dùng sửa: giữ bản cũ, chỉ tạo lại trang cần sửa, dùng cùng references,
+Người dùng sửa: tạm giữ bản cũ, chỉ tạo lại trang cần sửa, dùng cùng references,
 xuất revision mới. Text đổi thì cần sửa ảnh vì chữ do model tạo, không có bước
 chèn chữ riêng. Người dùng xác nhận thì ghi `approved` cho **đúng revision**
 trong notes. Duyệt tập không tự đồng nghĩa duyệt mọi mẫu nhân vật. Không tự đăng.
+
+## 7. Lưu tối thiểu sau bàn giao Telegram
+
+Bridge chỉ dọn khi revision mới nhất đã được kiểm tra, file khớp hash và
+Telegram xác nhận đủ mọi ảnh. Giữ output revision đó và snapshot kịch bản,
+episode.json hiện tại, nguồn, notes, references nhân vật, handoff mới nhất
+và outbox mới nhất để `/files`/`/resend` không cần vẽ lại. Sau mốc này dọn
+output revision cũ, draft/raw/request/prompt tạm và handoff/outbox đã bị thay
+thế; không giữ payload ảnh base64 trùng trong request.json. Quyền dọn áp dụng
+cả các tập cũ đã hoàn tất. Không dọn tác vụ đang sửa/lỗi/gửi thiếu, draft
+API unknown/in_flight hoặc response còn cần xử lý cục bộ. Không đụng nguồn,
+kho nhân vật, lịch sử Pi hay tập thử lịch sử được bảo lưu.
+
+Pi không tự xóa file trong tác vụ nội dung. Khi tiếp tục, chỉ đọc kịch bản
+và output hiện hành, nguồn/notes/references cần thiết; không quét mọi bản cũ.
+Số file trên đĩa không tự làm tăng context: lịch sử hội thoại là dữ liệu riêng,
+không bị xóa bởi việc dọn output. Bản đã dọn không còn để rollback.

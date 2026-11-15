@@ -34,7 +34,8 @@ không tự mua gói/tài khoản. Không mở cổng Internet hoặc đổi URL
 
 ## Một lệnh cho mỗi lượt tạo/sửa
 
-1. Lưu prompt thực tế, đúng text và chỉ dẫn nhận diện theo
+1. Lưu toàn bộ kịch bản vào episode.json (1-35 slide, text không rỗng), rồi
+   lưu prompt thực tế, đúng text và chỉ dẫn nhận diện theo
    [character](../prompts/character.md) hoặc [illustration](../prompts/illustration.md).
 2. Mở các ảnh mẫu thật; ghi thứ tự → ID/version/vai trò trong prompt và notes.
    Nhân vật có sẵn phải dùng snapshot đã chốt, không chỉ gửi đường dẫn/ID.
@@ -42,11 +43,17 @@ không tự mua gói/tài khoản. Không mở cổng Internet hoặc đổi URL
    300 giây để còn xử lý ảnh sau HTTP. Thay đường dẫn ví dụ bằng dữ liệu thật:
 
 ```bash
-node scripts/draw-image.mjs \
+node scripts/draw-image.mjs --slide 'episodes/TEN-TAP/episode.json' 1 \
   'episodes/TEN-TAP/prompts/001-r01.txt' \
   'episodes/TEN-TAP/drafts/001-r01' \
   'episodes/TEN-TAP/references/PHAT_01/v1/reference.jpg'
 ```
+
+Tạo/sửa mẫu nhân vật dùng `--character EPISODE_JSON PROMPT_FILE NEW_DRAFT_DIR
+[REFERENCE ...]` thay cho `--slide EPISODE_JSON SLIDE_NUMBER ...`. Cả hai
+chế độ đều đọc JSON, kiểm tra 1-35 slide và text trước POST; `--slide` còn
+kiểm tra số trang có trong kịch bản. CLI cũ không có JSON bị từ chối.
+`--normalize` chỉ xử lý response đã có nên không yêu cầu kịch bản.
 
 Các đối số sau thư mục draft là ảnh tham chiếu, đúng thứ tự. Có thể không có
 ảnh mẫu khi thiết kế mới/cảnh không cần; thường dùng
@@ -58,7 +65,8 @@ Script tự tạo thư mục độc quyền, lưu request/reference metadata, g�
 POST rồi xử lý ảnh. Nếu thư mục đã có thì từ chối trước API; không xóa thư mục
 để chạy lại. Kết quả một lượt:
 
-- `request.json`: đúng payload, prompt và Data URL, không chứa Authorization.
+- `request.json`: prompt/tham số, kịch bản/số slide và số mẫu; không lưu Data
+  URL/base64 trùng lặp hay Authorization. Payload gửi mạng vẫn có ảnh thật.
 - `references.json`: đường dẫn/MIME/kích thước thật của từng mẫu.
 - `response.bin`: bytes phản hồi API nguyên vẹn, không ghi đè bằng JPEG đã nén.
 - `status.json`: checkpoint lưu atomically; `in_flight`, `received`, `succeeded`,
@@ -93,7 +101,9 @@ Chỉ tiếp tục nếu lệnh tạo thư mục/sao chép thành công. Điền
 vào episode.json rồi lưu snapshot vào `output/rNN/episode.json`. Mở lại từng
 ảnh cuối, không chỉ draft; chữ/dấu phải còn rõ. Đặt `ready_for_review` chỉ khi
 đủ trang đã đạt. `/files` gửi nguyên artifact JPEG đã chốt, không phải raw
-response; PNG/revision/snapshot cũ vẫn hợp lệ và được giữ nguyên, không nén lại.
+response. Không nén lại PNG cũ. Với Telegram, chỉ giữ output/snapshot mới
+nhất sau khi gửi đủ; raw/draft/prompt và bản bị thay thế được bridge dọn theo
+WORKFLOW. Giữ dữ liệu lỗi/unknown và mọi file còn là nguồn/nhân vật cần dùng.
 
 ## Lỗi và tiếp tục không tạo ảnh trùng
 
