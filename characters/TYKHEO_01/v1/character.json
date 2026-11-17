@@ -1,0 +1,45 @@
+{
+  "id": "TYKHEO_01",
+  "name": "Tỳ kheo trưởng thành (thiết kế minh họa)",
+  "aliases": [
+    "Tỳ kheo",
+    "Tỷ kheo",
+    "vị xuất gia hướng dẫn"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam khoảng 55 tuổi, da nâu ấm, mặt dài hẹp, gò má nhẹ, nếp nhăn quanh mắt và má, lông mày đen mảnh, mắt nâu hiền, nét mặt trang nghiêm mỉm nhẹ. Không râu/ria, tai bình thường.",
+    "hair": "Đầu cạo sạch, không tóc hoặc búi.",
+    "body": "Vóc dáng thanh gọn, tỷ lệ người trưởng thành, chân trần.",
+    "clothing": "Y nâu đất trầm phủ cả hai vai, vải mềm khoác chéo thân và tay áo dài đến cổ tay; lớp dưới ochre nhạt lộ cổ. Không trang sức, không chuỗi hạt."
+  },
+  "keep": [
+    "Cùng mặt dài hẹp có nếp nhăn nhẹ, mắt hiền, đầu cạo, không râu.",
+    "Cùng y nâu đất trầm phủ hai vai, tay áo dài và cổ ochre nhạt, chân trần.",
+    "Chất chì màu 2D nét mảnh, điềm tĩnh tiết chế."
+  ],
+  "can_vary": [
+    "Đứng, ngồi, quỳ và tư thế tay tự nhiên",
+    "Hướng nhìn và biểu cảm nhẹ",
+    "Hướng dẫn hoặc lắng nghe theo cảnh"
+  ],
+  "avoid": [
+    "Tóc/búi đỉnh đầu/dái tai dài như Đức Phật",
+    "Trang sức, hào quang, bệ hoặc phụ kiện không yêu cầu",
+    "Y rực màu khác mẫu",
+    "Xác nhận diện mạo người thật/lịch sử hoặc gán làm người phạm lỗi"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "telegram-a1c7394d-2c39-4a2b-9acb-582d7592587f",
+    "draft": "drafts/r01-character-TYKHEO_01-a1",
+    "sha256": "5cd29e7f8da3bf66307079aa2ffbb483ae86b9d4ebef5e61fa6e0b6f52f48059",
+    "note": "Tạo mới mẫu tỳ kheo minh họa vai trò lắng nghe/hướng dẫn, ảnh style chỉ nét/màu. Không xác nhận người thật hoặc trang phục lịch sử chính xác."
+  },
+  "review_note": "Pi đã mở JPEG sau nén: một người đứng đủ thân, đầu cạo/mặt/y nâu hai vai/cổ ochre/chân trần đúng, tay chân tự nhiên, không chữ. Chưa được người dùng duyệt."
+}

@@ -1,0 +1,43 @@
+{
+  "id": "UGGA_01",
+  "name": "Gia chủ Ugga (thiết kế minh họa)",
+  "aliases": [
+    "Ugga",
+    "gia chủ Ugga"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam khoảng 55 tuổi, da nâu ấm, mặt vuông mềm, mắt nâu hiền, lông mày đậm, mũi rộng vừa, râu ngắn muối tiêu gọn quanh cằm và ria mép.",
+    "hair": "Tóc xám đen gợn nhẹ rẽ lệch, dài chạm gáy, không búi.",
+    "body": "Vóc dáng vừa hơi đậm, người trưởng thành, chân trần.",
+    "clothing": "Áo màu kem tay dài, cổ tròn có khe xẻ ngắn; khăn nâu vàng nhạt vắt vai trái và chéo qua thân; quần vải rộng nâu đất nhạt. Không trang sức/mũ."
+  },
+  "keep": [
+    "Giữ mặt vuông mềm, tóc xám đen gợn chạm gáy, râu muối tiêu ngắn.",
+    "Giữ áo kem tay dài, khăn nâu vàng qua vai trái, quần nâu đất nhạt, chân trần.",
+    "Chất liệu chì màu 2D nét mảnh, biểu cảm hiền hòa tiết chế."
+  ],
+  "can_vary": [
+    "Đứng/ngồi/quỳ, hướng nhìn và tư thế tay tự nhiên theo cảnh",
+    "Biểu cảm nhẹ phù hợp cảnh"
+  ],
+  "avoid": [
+    "Đầu cạo hoặc tóc búi xoăn như Đức Phật",
+    "Đổi trang phục hoặc thêm trang sức, vương miện, hào quang",
+    "Khẳng định diện mạo/trang phục lịch sử đã xác minh",
+    "Gán làm nhân vật keo kiệt trong phần lời bàn"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "telegram-53d1d13b-7843-40dd-b9fb-3cd453a5a8f0",
+    "draft": "drafts/character-UGGA_01-v1",
+    "sha256": "02ea5043ee4d149e17adba8b5e4e8e89c3b1e087c7cb3b6f507bc7678afec13d",
+    "note": "Ảnh phong cách chỉ nét/màu, không mượn định danh nhân vật có sẵn; minh họa quy ước không xác minh lịch sử."
+  },
+  "review_note": "Pi đã mở JPEG sau nén: một người đứng đủ thân, tóc/râu/mặt/y phục đúng mô tả, hai tay chắp tự nhiên, chân trần, không chữ/người phụ. Chưa được người dùng duyệt."
+}

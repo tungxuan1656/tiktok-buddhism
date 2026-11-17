@@ -1,0 +1,45 @@
+{
+  "id": "CUSI_01",
+  "name": "Cư sĩ nam (thiết kế minh họa)",
+  "aliases": [
+    "cư sĩ",
+    "người nghe pháp",
+    "người Kàlàmà (đại diện minh họa)"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam trưởng thành khoảng 35–40 tuổi, da nâu sáng ấm, khuôn mặt hơi góc cạnh nhưng mềm, mắt nâu mở hiền, lông mày đen khá thẳng, mũi vừa, môi mỉm nhẹ, không râu/ria.",
+    "hair": "Tóc đen ngắn hơi gợn, rẽ lệch, lộ tai, không búi hoặc mũ.",
+    "body": "Vóc dáng thanh gọn, tỷ lệ người trưởng thành, chân trần.",
+    "clothing": "Áo cổ tròn tay ngắn màu nâu đất nhạt phủ cả hai vai; khăn màu kem vắt qua vai trái và chéo ngang thân; dhoti màu kem dài đến cổ chân, không trang sức."
+  },
+  "keep": [
+    "Cùng khuôn mặt trưởng thành da nâu ấm, tóc đen ngắn gợn rẽ lệch, không râu.",
+    "Cùng áo tay ngắn nâu nhạt, khăn kem qua vai trái, dhoti kem và chân trần.",
+    "Nét chì màu 2D, hiền hòa tiết chế; không có dấu hiệu định danh của Đức Phật."
+  ],
+  "can_vary": [
+    "Đứng, ngồi, quỳ và tư thế tay tự nhiên",
+    "Hướng nhìn và biểu cảm nhẹ",
+    "Cầm vật được chỉ định trong cảnh"
+  ],
+  "avoid": [
+    "Tóc búi/đầu cạo/dái tai dài như Đức Phật",
+    "Y tu sĩ hở vai, áo màu rực",
+    "Râu, trang sức, hào quang",
+    "Xác nhận là diện mạo cá nhân lịch sử"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "telegram-b84f9366-c2ab-49d3-9661-63305114de2c",
+    "draft": "drafts/r01-character-CUSI_01-a1",
+    "sha256": "ffa5897a9e1ab8c0b885c83904a090405a2a45a84779ba7f00a2743aaa640dae",
+    "note": "Mẫu tạo mới trong tác vụ Chánh tín. Tham chiếu nét/màu từ ảnh style gốc, không sao chép nhân vật. Dùng làm đại diện minh họa, không xác nhận diện mạo lịch sử."
+  },
+  "review_note": "Pi đã mở JPEG sau nén, kiểm tra mặt/tóc/y phục/tay/chân và không có chữ. Chưa được người dùng duyệt."
+}

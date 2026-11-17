@@ -1,0 +1,45 @@
+{
+  "id": "ALAVAKKA_01",
+  "name": "Dạ xoa Alavakka (thiết kế minh họa)",
+  "aliases": [
+    "Alavakka",
+    "Dạ xoa Alavakka"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam trưởng thành khoảng 40 tuổi, da nâu đồng ấm, mặt rộng góc cạnh, lông mày đen rậm, mắt nâu sâu, mũi rộng vừa, môi khép nghiêm hơi cau. Không râu/ria, tai hơi nhọn nhẹ.",
+    "hair": "Tóc đen dài gợn sóng, rẽ giữa nhẹ, buộc búi thấp sau gáy, có lọn rủ cạnh tai. Không tóc xoăn lọn hay búi đỉnh đầu như Đức Phật.",
+    "body": "Vóc dáng chắc khỏe vừa phải, vai rộng, tay/chân tự nhiên, chân trần.",
+    "clothing": "Áo vải nâu đất đậm không tay, cổ V nông; dhoti nâu gỉ nhạt dài giữa bắp chân; dải vải thắt eo ochre buông bên hông trái. Không trang sức/vũ khí."
+  },
+  "keep": [
+    "Cùng mặt góc cạnh, lông mày rậm, tai hơi nhọn và tóc gợn dài búi thấp sau gáy.",
+    "Cùng áo không tay nâu đậm cổ V, dhoti nâu gỉ, đai vải ochre và chân trần.",
+    "Tranh 2D chì màu, nghiêm tiết chế không kinh dị."
+  ],
+  "can_vary": [
+    "Đứng hoặc ngồi, tư thế tay tự nhiên",
+    "Biểu cảm từ nghiêm/cau nhẹ đến chăm chú",
+    "Hướng nhìn và bước chân theo cảnh"
+  ],
+  "avoid": [
+    "Sừng/nanh/móng vuốt/mặt nạ",
+    "Râu, trang sức, áo giáp hoặc vũ khí",
+    "Tóc búi đỉnh đầu, y vàng giống Đức Phật",
+    "Bạo lực trực diện, máu hoặc thương tích",
+    "Xác nhận diện mạo lịch sử"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "telegram-67e88414-e3eb-492d-b3d7-b84468bfa08b",
+    "draft": "drafts/r01-character-ALAVAKKA_01-a1",
+    "sha256": "138fc5d3a2ed147aa7ccfd67f1384d1643eaa081c4e0e9bde79b53a1afba351d",
+    "note": "Tạo mới cho đoạn đối thoại Alavakka. Ảnh style chỉ hướng dẫn nét/màu; tạo hình thần thoại quy ước không phải diện mạo lịch sử."
+  },
+  "review_note": "Pi đã mở JPEG sau nén: một người đủ thân, tóc búi thấp/tai nhọn nhẹ/áo/dhoti/đai đúng, tay chân tự nhiên không chữ hay phụ cảnh. Chưa được người dùng duyệt."
+}

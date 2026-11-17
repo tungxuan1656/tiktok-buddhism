@@ -1,0 +1,44 @@
+{
+  "id": "SARIPUTTA_01",
+  "name": "Tôn giả Sàriputta (thiết kế minh họa)",
+  "aliases": [
+    "Sàriputta",
+    "Sariputta",
+    "Xá Lợi Phất"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam khoảng 50 tuổi, da nâu ấm, mặt trái xoan hẹp, gò má rõ, cằm thon, lông mày mảnh thẳng, mắt nâu hiền, mũi thẳng, nếp nhăn nhẹ quanh mắt/má, tai bình thường. Không râu/ria.",
+    "hair": "Đầu cạo sạch, không tóc/búi.",
+    "body": "Vóc dáng thanh gọn, người trưởng thành, chân trần.",
+    "clothing": "Y nâu vàng trầm quấn nếp mềm phủ vai trái, vai phải trần; y dài gần mắt cá, không tay áo/cổ áo, không trang sức."
+  },
+  "keep": [
+    "Giữ mặt hẹp, gò má/nếp nhăn nhẹ, đầu cạo không râu.",
+    "Giữ y nâu vàng trầm phủ vai trái, vai phải để trần, không tay áo dài, chân trần.",
+    "Minh họa 2D chì màu nét mảnh, biểu cảm trang nghiêm hiền hòa."
+  ],
+  "can_vary": [
+    "Đứng/ngồi/quỳ, hướng nhìn và tư thế tay tự nhiên",
+    "Biểu cảm nhẹ khi hỏi/lắng nghe"
+  ],
+  "avoid": [
+    "Tóc xoăn búi hoặc dái tai dài như Phật",
+    "Y tay áo dài phủ hai vai như TYKHEO_01",
+    "Thêm trang sức, hào quang hoặc đạo cụ không yêu cầu",
+    "Khẳng định diện mạo lịch sử đã xác minh hoặc gán làm người có lỗi"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "telegram-20ffc436-d626-47f5-92e3-016b3b82911b",
+    "draft": "drafts/character-SARIPUTTA_01-v1",
+    "sha256": "fcac2c367dde02f382d22a92f0c0e1de7e16d96b82d43016e6adbdd4899db183",
+    "note": "Tạo mới theo quy ước minh họa, ảnh style chỉ nét/màu, không khẳng định diện mạo hoặc phục trang lịch sử."
+  },
+  "review_note": "Pi mở JPEG sau nén: một người đứng đủ thân, mặt hẹp/đầu cạo/y nâu vàng vai trái/vai phải trần/chân trần đúng, tay chắp tự nhiên, không chữ hoặc người phụ. Chưa được người dùng duyệt."
+}
