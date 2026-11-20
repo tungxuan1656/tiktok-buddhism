@@ -144,10 +144,14 @@ từ pixel. Giữ văn bản gốc trong repo, không tuyên bố kiểm tra ả
 ## 6. Xuất file và bàn giao
 
 Wrapper đã xuất JPEG95 1080 × 1440, chỉ fit + padding, không thêm chữ bằng
-phần mềm, không crop hoặc kéo méo. Kiểm tra chữ sau nén; sao chép nguyên bytes
-ảnh đạt sang output, không mã hóa JPEG thêm lần nữa. Mở lại **từng ảnh cuối**
-để chắc không mờ/chặt chữ. Không nén lại PNG cũ; giữ bản trước khi bản
-thay thế chưa được gửi đủ hoặc còn lỗi.
+phần mềm, không crop hoặc kéo méo. Sau khi kiểm tra chữ, dùng
+[`scripts/export-slide.mjs`](scripts/export-slide.mjs) theo [hướng dẫn xuất](references/painter-local-api.md#kiểm-tra-và-xuất-revision)
+để chép nguyên bytes ảnh đạt sang output, không mã hóa lại. Mở lại **từng ảnh cuối**
+để chắc không mờ/chặt chữ. Nếu đích đã có và khớp từng byte, xác nhận phần ghi
+nhận còn thiếu trong `episode.json` và `notes.md`, rồi chuyển sang trang thiếu
+tiếp theo; không lặp dòng kiểm tra đã có. Nếu ảnh đích khác bytes, giữ cả hai
+bản và đối chiếu đúng draft/revision, không ghi đè. Không nén lại PNG cũ; giữ
+bản trước khi bản thay thế chưa được gửi đủ hoặc còn lỗi.
 
 Lưu `output/r01/001.jpg`… và snapshot `episode.json` của revision. Ghi kết quả
 tự kiểm tra/giới hạn vào notes, đặt `ready_for_review` chỉ khi đủ trang đã đạt.

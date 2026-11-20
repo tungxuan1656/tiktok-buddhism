@@ -88,17 +88,19 @@ tuyệt đối. Sai thì lưu lý do, tạo lượt sửa mới bằng cùng scr
 tối đa hai lần sửa/trang. Không sửa nguồn/kịch bản để hợp thức hóa chữ sai.
 Lưu kết quả kiểm tra ngay sau từng ảnh, không chờ đủ cả bộ.
 
-Wrapper đã tạo đúng 1080 × 1440; **không mã hóa JPEG lại khi xuất**. Tạo revision
-mới rồi sao chép nguyên bytes ảnh đạt sang `001.jpg`, `002.jpg`...:
+Wrapper đã tạo đúng 1080 × 1440; **không mã hóa JPEG lại khi xuất**. Dùng bước
+cục bộ này cho ảnh đã kiểm tra, không gọi API và không dùng `cp -n`:
 
 ```bash
-out='episodes/TEN-TAP/output/r01'
-test ! -e "$out" && mkdir -p "$out"
-test ! -e "$out/001.jpg" && cp 'episodes/TEN-TAP/drafts/001-r01/image.jpg' "$out/001.jpg"
+node scripts/export-slide.mjs \
+  'episodes/TEN-TAP/drafts/001-r01/image.jpg' \
+  'episodes/TEN-TAP/output/r01/001.jpg'
 ```
 
-Chỉ tiếp tục nếu lệnh tạo thư mục/sao chép thành công. Điền đúng đường dẫn JPG
-vào episode.json rồi lưu snapshot vào `output/rNN/episode.json`. Mở lại từng
+`exported` (tạo ảnh đích) và `reused` (đích đã khớp từng byte) đều thành công.
+Nếu ảnh đích khác, lệnh dừng mà không ghi đè; đối chiếu lại draft và revision.
+Điền đúng đường dẫn JPG vào episode.json, chỉ bổ sung dòng kiểm tra còn thiếu
+trong notes, rồi lưu snapshot vào `output/rNN/episode.json`. Mở lại từng
 ảnh cuối, không chỉ draft; chữ/dấu phải còn rõ. Đặt `ready_for_review` chỉ khi
 đủ trang đã đạt. `/files` gửi nguyên artifact JPEG đã chốt, không phải raw
 response. Không nén lại PNG cũ. Với Telegram, chỉ giữ output/snapshot mới

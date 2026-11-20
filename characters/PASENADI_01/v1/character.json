@@ -1,0 +1,44 @@
+{
+  "id": "PASENADI_01",
+  "name": "Vua Pasenadi nước Kosala (thiết kế minh họa)",
+  "aliases": [
+    "Pasenadi",
+    "vua Pasenadi",
+    "Ba Tư Nặc"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam khoảng 55 tuổi, da nâu ấm, mặt rộng hơi vuông má đầy, lông mày dày cong nhẹ, mắt nâu suy tư hiền, mũi rộng vừa, ria mép đen xám gọn, không râu dài.",
+    "hair": "Tóc đen xám gợn nhẹ chải ra sau chạm gáy; dải miện vàng đất thấp có một viên đá nâu đỏ nhỏ ở giữa, không mũ nhọn cao.",
+    "body": "Vóc dáng hơi đậm, người trưởng thành, chân trần.",
+    "clothing": "Áo tunic tay dài nâu đỏ trầm cổ tròn khe ngắn viền vàng đất, cổ tay/gấu áo viền vàng mảnh; đai vải vàng đất nhạt, quần kem rộng, khăn vàng đất nhạt khoác vai trái và buông qua thân. Không vòng cổ/bông tai/vòng tay/kiếm/trượng."
+  },
+  "keep": [
+    "Giữ mặt rộng/má đầy/ria mép đen xám, tóc xám sau gáy, miện thấp một viên đá đỏ nâu.",
+    "Giữ tunic nâu đỏ trầm viền vàng, đai/khăn vàng nhạt, quần kem/chân trần.",
+    "Chì màu 2D nét mảnh, điềm tĩnh trang nghiêm, không biếm họa/xa hoa bóng bẩy."
+  ],
+  "can_vary": [
+    "Đứng/ngồi/quỳ, hướng nhìn/tư thế tay theo cảnh",
+    "Biểu cảm suy tư nhẹ hoặc trình bày/lắng nghe"
+  ],
+  "avoid": [
+    "Tóc/y Phật hoặc mặt/tóc mẫu cư sĩ khác",
+    "Miện cao/áo tím/trang sức/kiếm/ngai không được yêu cầu",
+    "Gán vai nghiện ngập/sa đọa hoặc tội phạm trong lời bàn",
+    "Khẳng định diện mạo/phục trang lịch sử đã xác minh"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "telegram-cc1c10a5-8aa5-4bfe-bdb5-996f12d3382c",
+    "draft": "drafts/character-PASENADI_01-v1",
+    "sha256": "55a961802e0b0de2132ef256c99379384e82c93367a6c1b3d61f57c80f430344",
+    "note": "Thiết kế quy ước minh họa, style chỉ nét/màu không mượn định danh; không xác nhận diện mạo hoặc trang phục lịch sử."
+  },
+  "review_note": "Pi mở JPEG sau nén: một người đứng đủ thân, mặt/ria/tóc/miện thấp/áo/đai/khăn/quần/tay chân đúng, không chữ/người phụ/đạo cụ. Chưa được người dùng duyệt."
+}

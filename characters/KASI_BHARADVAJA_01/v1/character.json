@@ -1,0 +1,43 @@
+{
+  "id": "KASI_BHARADVAJA_01",
+  "name": "Bà-la-môn Kasi Bhàradvàja (thiết kế minh họa)",
+  "aliases": [
+    "Kasi Bhàradvàja",
+    "Kasi Bharadvaja",
+    "Bà-la-môn Kasi"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam khoảng 50 tuổi, da nâu rám ấm, mặt rộng góc cạnh, gò má rõ, lông mày đậm, mắt nâu điềm tĩnh, mũi rộng vừa, râu đầy vừa dài đen pha xám cùng ria mép.",
+    "hair": "Tóc đen pha xám dài chạm gáy, khăn quấn đầu vải kem đơn sơ, không búi xoăn cao.",
+    "body": "Thân hình rắn vừa, người trưởng thành, chân trần.",
+    "clothing": "Áo gi-lê không tay nâu đất nhạt mở phía trước trên ngực trần, vải quấn kem dài dưới gối gần bắp chân, đai vải nâu quấn eo. Không trang sức/chuỗi hạt."
+  },
+  "keep": [
+    "Giữ mặt góc cạnh/râu đầy đen xám, tóc gáy/khăn kem quấn đầu.",
+    "Giữ gi-lê không tay nâu nhạt/ngực trần, vải quấn kem/đai nâu/chân trần.",
+    "Chì màu 2D nét mảnh, biểu cảm thắc mắc điềm tĩnh không biếm họa."
+  ],
+  "can_vary": [
+    "Đứng/ngồi, hướng nhìn/tư thế tay tự nhiên theo cảnh",
+    "Biểu cảm nhẹ khi hỏi/lắng nghe, không giận dữ quá mức"
+  ],
+  "avoid": [
+    "Mặt/tóc/y Phật hoặc nhân vật khác",
+    "Trang sức/vương miện/hào quang/đạo cụ ngoài yêu cầu",
+    "Khẳng định diện mạo/phục trang lịch sử hoặc dùng làm đại diện bêu xấu cả cộng đồng"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "telegram-b6e7b9a0-ae06-446d-93fe-bab2d092b005",
+    "draft": "drafts/character-KASI_BHARADVAJA_01-v1",
+    "sha256": "37032e98f87ecd2e02e0256d183cf617bdd6f25d1af6854f3cdd2aaf012119ca",
+    "note": "Thiết kế quy ước, style chỉ nét/màu, không khẳng định diện mạo hoặc phục trang lịch sử."
+  },
+  "review_note": "Pi mở JPEG sau nén: một người đứng đủ thân, mặt/râu/khăn đầu/gi-lê/vải quấn/đai/tay chân đúng, không chữ/người phụ/đạo cụ. Chưa được người dùng duyệt."
+}

@@ -30,7 +30,7 @@ chmod 600 .env
    prompt model, gọi Telegram hoặc tạo ảnh. Exit 2 nghĩa thiếu cấu hình bot.
 6. Chờ tin “Bridge sẵn sàng” trên điện thoại, nhắn yêu cầu làm slide.
 
-Bot được ghim vào **`cx/gpt-6.1-sol`**, provider **`9router`**, thinking
+Bot được ghim vào **`cx/gpt-6.2-sol`**, provider **`9router`**, thinking
 **`high`**; không dùng `PI_MODEL` hoặc model mặc định để chọn ngầm.
 [model.ts](model.ts) áp dụng model và mức suy luận có sẵn cho session bot,
 không bổ sung hay sửa metadata model. Giữ nguyên endpoint, auth, các model

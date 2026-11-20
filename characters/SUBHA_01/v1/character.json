@@ -1,0 +1,43 @@
+{
+  "id": "SUBHA_01",
+  "name": "Thanh niên Subha Todeyyaputta (thiết kế minh họa)",
+  "aliases": [
+    "Subha",
+    "Subha Todeyyaputta"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam khoảng 25 tuổi, da nâu ấm, mặt trái xoan trẻ, má đầy vừa, mắt nâu đen chăm chú, lông mày cong vừa, mũi thẳng, không râu/ria hoặc nếp nhăn tuổi già.",
+    "hair": "Tóc đen gợn nhẹ dài chạm gáy, buộc gọn một nút thấp sau gáy, không búi đỉnh đầu.",
+    "body": "Vóc dáng thanh vừa, người trưởng thành, chân trần.",
+    "clothing": "Áo kem cổ tròn tay ngắn, khăn nâu đất đỏ nhạt vắt vai trái; vải quấn thân dưới be sáng dài gần mắt cá, viền vàng đất mảnh. Không mũ/trang sức/chuỗi hạt."
+  },
+  "keep": [
+    "Giữ mặt trẻ không râu, tóc gợn buộc nút thấp sau gáy.",
+    "Giữ áo kem tay ngắn, khăn nâu đất đỏ nhạt vai trái, vải quấn be viền vàng, chân trần.",
+    "Chì màu 2D nét mảnh, hiền hòa trang nghiêm tiết chế."
+  ],
+  "can_vary": [
+    "Đứng/ngồi/quỳ, hướng nhìn/tư thế tay theo cảnh",
+    "Biểu cảm nhẹ khi hỏi/lắng nghe"
+  ],
+  "avoid": [
+    "Tóc xoăn búi cao như Phật hoặc đầu cạo như tỳ kheo",
+    "Râu/nếp nhăn người lớn tuổi",
+    "Trang sức/vương miện/hào quang hoặc đạo cụ ngoài yêu cầu",
+    "Khẳng định diện mạo lịch sử hoặc gán làm người bất thiện/nghèo có lỗi trong lời bàn"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "telegram-fca1fc75-842e-442f-9244-f586b27b4c7d",
+    "draft": "drafts/character-SUBHA_01-v1",
+    "sha256": "eead8e2a792c8267cad09b96c0543699bcb8257f0abfd361c8f9b740f620d23b",
+    "note": "Thiết kế quy ước, ảnh style chỉ nét/màu, không khẳng định diện mạo hoặc trang phục lịch sử."
+  },
+  "review_note": "Pi đã mở JPEG sau nén: một người đứng đủ thân, tóc nút thấp/mặt trẻ/không râu/áo kem/khăn vai trái/vải quấn/tay/chân đúng; không chữ/người phụ. Chưa được người dùng duyệt."
+}

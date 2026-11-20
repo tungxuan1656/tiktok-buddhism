@@ -1,0 +1,43 @@
+{
+  "id": "ANATHAPINDIKA_01",
+  "name": "Gia chủ Anàthapindika — Cấp Cô Độc (thiết kế minh họa)",
+  "aliases": [
+    "Anàthapindika",
+    "Anathapindika",
+    "Cấp Cô Độc"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam khoảng 55 tuổi, da nâu ấm, mặt tròn rộng, má đầy vừa, trán cao, mắt nâu hiền, lông mày dày hơi cong, mũi tròn, nếp nhăn nhẹ quanh mắt/má. Không râu/ria.",
+    "hair": "Tóc ngắn xám đen chải ra sau, mai bạc, không búi/không cạo.",
+    "body": "Vóc dáng hơi đậm, người trưởng thành, chân trần.",
+    "clothing": "Áo kem cổ tròn có khe xẻ ngắn, tay dài; khăn vàng đất nhạt phủ hai vai buông hai vạt trước ngực; vải quấn nâu nhạt dài gần mắt cá. Không trang sức/mũ/chuỗi hạt."
+  },
+  "keep": [
+    "Giữ mặt tròn rộng/má đầy, tóc ngắn xám mai bạc, không râu.",
+    "Giữ áo kem tay dài, khăn vàng đất nhạt hai vai/hai vạt, vải quấn nâu nhạt, chân trần.",
+    "Chì màu 2D nét mảnh, trang nghiêm hiền hòa tiết chế."
+  ],
+  "can_vary": [
+    "Đứng/ngồi/quỳ, hướng nhìn/tư thế tay tự nhiên",
+    "Biểu cảm nhẹ khi hỏi/nghe/dâng cúng"
+  ],
+  "avoid": [
+    "Tóc xoăn búi như Phật, râu muối tiêu của Ugga, mặt trẻ/tóc nút thấp Subha",
+    "Thêm trang sức/vương miện/hào quang/đạo cụ ngoài yêu cầu",
+    "Khẳng định diện mạo lịch sử hoặc dùng nét mặt làm chứng cứ quả vị"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "telegram-d93ea3d0-09d2-411b-af63-8e4adc67a233",
+    "draft": "drafts/character-ANATHAPINDIKA_01-v1",
+    "sha256": "f1e42ca12058f8e7a04d03245abf3cb517214e80d569de0fca312ca54d712f66",
+    "note": "Thiết kế minh họa quy ước; style chỉ nét/màu, không khẳng định diện mạo hoặc phục trang lịch sử."
+  },
+  "review_note": "Pi mở JPEG sau nén: một người đứng đủ thân, mặt tròn/tóc xám mai bạc/không râu/áo kem/khăn vàng hai vai/vải nâu/tay chân đúng, không chữ/người phụ. Chưa được người dùng duyệt."
+}

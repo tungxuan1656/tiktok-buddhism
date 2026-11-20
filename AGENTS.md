@@ -54,6 +54,9 @@ Không yêu cầu họ điều phối Creator/Painter hoặc duyệt từng bư�
 - Sau mỗi lượt, mở ảnh thật sau nén và đọc đối chiếu **từng dòng, từng chữ và dấu**
   với text trong JSON. Phóng to/cắt ảnh để xem khi cần, không tự đoán chữ nhỏ.
   Sai/thiếu/thừa chữ thì sửa ảnh với cùng references; HTTP 200 không phải đạt.
+- Xuất slide đã kiểm tra bằng `node scripts/export-slide.mjs DRAFT_IMAGE OUTPUT_IMAGE`,
+  không dùng `cp -n`. Nếu ảnh đích khớp từng byte, giữ nguyên và hoàn tất phần
+  ghi nhận còn thiếu rồi tiếp tục; không vẽ lại hoặc báo `blocked` chỉ vì tệp đã có.
 - Lưu tối thiểu: kịch bản, nguồn, notes/kiểm tra, mẫu nhân vật và output mới
   nhất đã kiểm tra/gửi đủ. Với Telegram, bridge mới được dọn output/draft,
   prompt và handoff/outbox cũ sau khi nhận đủ xác nhận gửi bản thay thế.
