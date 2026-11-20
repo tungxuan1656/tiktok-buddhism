@@ -39,10 +39,23 @@ phải xác nhận đúng model và `high`, sai thì dừng trước prompt, kh�
 mức suy luận. `npm run check` in lựa chọn hiệu lực này, không chứng minh
 upstream đã chấp nhận một request thực với `high`.
 
-Bridge tắt extension, MCP, skill và prompt template tự nạp; chỉ nạp extension
-model nói trên và bật read/bash/edit/write. AGENTS.md và hướng dẫn nội dung vẫn
-được nạp. Pi child không nhận biến `TELEGRAM_*`. Chạy trực tiếp Pi như trước
-không bị thay đổi.
+Bridge tắt extension, MCP, skill và prompt template tự nạp. Pi RPC nạp đích danh
+`bridge/model.ts` và ba extension dưới đây từ thư mục agent Pi, ngoài các tool
+cơ bản `read/bash/edit/write`. Nếu thiếu, cài bằng Pi trên cùng máy/chủ tài khoản
+chạy bridge; bridge không tự cài hoặc cập nhật package khi khởi động.
+
+```sh
+pi install git:github.com/microsoft/TokenEconomizer
+pi install npm:billion-context
+pi install npm:pi-web-access
+```
+
+AGENTS.md và hướng dẫn nội dung vẫn được nạp. Bridge không đưa ảnh vào prompt:
+Pi đọc đúng file trên đĩa khi cần kiểm tra. Ảnh trả từ `read` chỉ đi vào lượt GPT
+ngay sau đó; file và transcript không bị xóa. Sau khi xem và xác nhận ảnh đạt,
+Pi dùng `export-slide.mjs --checked` để xuất, đối chiếu SHA-256 và ghi checkpoint
+bằng một lượt tool. Pi child không nhận giá trị biến `TELEGRAM_*`. Bridge không
+thay đổi cấu hình Pi khi bạn chạy trực tiếp.
 
 Bot chỉ chấp nhận đồng thời `from.id == chat.id == TELEGRAM_USER_ID` và
 `chat.type == private`; nhóm, người lạ, bot khác không được giao việc. Bot
@@ -75,15 +88,21 @@ không tự giảm chất lượng hoặc âm thầm chuyển sang tệp.
 | `/trace_off` | Tắt cập nhật trực tiếp, vẫn giữ bộ đệm log |
 | `/log` | Xem ngay 10 dòng mới nhất, kể cả khi Pi đang chạy |
 | `/cancel` | Dừng lượt đang làm/gửi; giữ dữ liệu và các tin bổ sung, không tự chạy lại |
-| `/done` | Kết thúc tập hiện tại; tập tiếp theo vẫn dùng hội thoại Pi này |
-| `/new` | Mở hội thoại Pi và tập mới; không xóa ảnh hoặc lịch sử cũ |
+| `/done` | Kết thúc tập hiện tại; tập tiếp theo dùng session Pi mới |
+| `/new` | Tạm cất tập hiện tại (chưa kết thúc), mở session mới cho tập tiếp theo |
+| `/episodes` | Liệt kê tập chưa kết thúc; bấm nút để chọn lại đúng session của tập. Dùng `/episodes 2` để xem trang 2 nếu có |
 | `/files` | Gửi toàn bộ tệp JPEG/PNG đã chốt của revision đã chốt mới nhất trong tập hiện tại; đợi lượt đang chạy/gửi xong trước |
 | `/resend` | Chỉ gửi lại phần chưa nhận của tập hiện tại, giữ kiểu ảnh/tệp đã lưu của từng revision; không gọi Pi |
 
 `/start` hoặc lệnh chưa biết hiển thị hướng dẫn. Tin nhắn sau mặc định sửa
-**cùng tập**, cùng session/snapshot nhân vật, xuất revision mới. Muốn tập mới
-thì `/done` rồi giao nội dung mới; muốn cả hội thoại mới thì `/new`. Hai lệnh
-này bị từ chối khi đang chạy/gửi, không âm thầm bỏ việc.
+**cùng tập**, cùng session/snapshot nhân vật, xuất revision mới. Muốn tập mới:
+`/done` nếu đã kết thúc tập cũ, `/new` nếu còn muốn quay lại. Dùng `/episodes`
+và bấm nút để chuyển tập; thao tác này không gọi GPT hay tự chạy lại yêu cầu.
+Sau khi chọn, nhắn để làm tiếp hoặc `/done` để kết thúc. Ảnh còn chờ khi
+chuyển tập được giữ lại; dùng `/resend` để gửi tiếp. Nếu đang chạy/gửi,
+bridge không cho đổi hay đóng tập. Các nút cũ của tập đã `/done` không mở lại
+được. Ảnh và lịch sử vẫn giữ. Không tách lại transcript của các tập cũ từng
+được lưu chung session.
 
 Tin bổ sung lúc đang bận được lưu SQLite và xử lý tuần tự **sau lượt hiện tại**,
 không chen vào prompt đang chạy. Muốn đổi hướng ngay: `/cancel`, đợi xác nhận,

@@ -98,6 +98,12 @@ export class Store {
   deliveries(run?: string): Delivery[] {
     return this.db.prepare('SELECT * FROM deliveries WHERE (? IS NULL OR run=?) ORDER BY rowid').all(run ?? null, run ?? null) as Delivery[];
   }
+  taskDeliveries(task: string): Delivery[] {
+    return this.db.prepare('SELECT * FROM deliveries WHERE run IN (SELECT id FROM runs WHERE task=?) ORDER BY rowid').all(task) as Delivery[];
+  }
+  holdDeliveries(task: string) {
+    this.db.prepare("UPDATE deliveries SET state='held' WHERE state='pending' AND run IN (SELECT id FROM runs WHERE task=?)").run(task);
+  }
   deliveryState(file: Delivery, state: string, message: number | null = null) {
     this.db.prepare('UPDATE deliveries SET state=?,message=? WHERE run=? AND position=?').run(state, message, file.run, file.position);
   }
@@ -116,10 +122,23 @@ export class Store {
       return interrupted.length > 0;
     });
   }
-  closeTask(newSession: boolean) {
+  unfinished(offset: number, limit: number): (Task & { title: string | null })[] {
+    return this.db.prepare(`SELECT tasks.*, (SELECT inbox.text FROM runs JOIN inbox ON inbox.id=runs.input
+      WHERE runs.task=tasks.id ORDER BY runs.rowid LIMIT 1) AS title
+      FROM tasks WHERE state!='closed' ORDER BY tasks.rowid DESC LIMIT ? OFFSET ?`).all(limit, offset) as (Task & { title: string | null })[];
+  }
+  activateTask(id: string): Task | undefined {
+    const task = this.db.prepare("SELECT * FROM tasks WHERE id=? AND state!='closed'").get(id) as Task | undefined;
+    if (task) {
+      this.set('task', task.id);
+      this.set('session', task.session);
+    }
+    return task;
+  }
+  leaveTask(close: boolean) {
     const task = this.current();
-    if (task) this.taskState(task.id, 'closed', 'Đã kết thúc; giữ toàn bộ dữ liệu');
+    if (task && close) this.taskState(task.id, 'closed', 'Đã kết thúc; giữ toàn bộ dữ liệu');
     this.set('task', '');
-    if (newSession) this.set('session', randomUUID());
+    this.set('session', randomUUID());
   }
 }

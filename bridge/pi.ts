@@ -1,9 +1,15 @@
-import { RpcClient } from '@earendil-works/pi-coding-agent';
+import { getAgentDir, RpcClient } from '@earendil-works/pi-coding-agent';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { mkdir } from 'node:fs/promises';
+import { access, mkdir } from 'node:fs/promises';
 import { eventLine } from './trace.ts';
 import { BOT_MODEL } from './model.ts';
+
+const EXTENSIONS = [
+  ['git:github.com/microsoft/TokenEconomizer', 'git/github.com/microsoft/TokenEconomizer/plugin/pi/tokeneconomizer.ts'],
+  ['npm:billion-context', 'npm/node_modules/billion-context/dist/agent/billion-context.js'],
+  ['npm:pi-web-access', 'npm/node_modules/pi-web-access/dist/index.js'],
+] as const;
 
 export class PiFailure extends Error {
   code: string;
@@ -33,6 +39,12 @@ export class PiRunner implements Runner {
   async connect(session: string) {
     if (this.client && this.session === session) return this.client;
     await this.stop();
+    const extensions = [join(this.root, 'bridge/model.ts')];
+    for (const [source, entry] of EXTENSIONS) {
+      const path = join(getAgentDir(), entry);
+      await access(path).catch(() => { throw new PiFailure('connection', `Thiếu extension Pi ${source}; cài bằng pi install ${source}`); });
+      extensions.push(path);
+    }
     await mkdir(join(this.stateDir, 'sessions'), { recursive: true, mode: 0o700 });
     const env = Object.fromEntries(Object.keys(process.env).filter(key => key.startsWith('TELEGRAM_')).map(key => [key, '']));
     this.client = new RpcClient({
@@ -41,7 +53,7 @@ export class PiRunner implements Runner {
       args: ['--session-dir', join(this.stateDir, 'sessions'), '--session-id', session,
         '--no-extensions', '--no-mcp', '--no-skills', '--no-prompt-templates', '--no-themes',
         '--no-approve', '--tools', 'read,bash,edit,write',
-        '--extension', join(this.root, 'bridge/model.ts'), '--thinking', BOT_MODEL.thinking,
+        ...extensions.flatMap(path => ['--extension', path]), '--thinking', BOT_MODEL.thinking,
         '--append-system-prompt', join(this.root, 'bridge/agent.md')],
     });
     this.session = session;
@@ -55,7 +67,7 @@ export class PiRunner implements Runner {
       return this.client;
     } catch {
       await this.stop();
-      throw new PiFailure('connection', `Không khởi động được Pi RPC: cần ${BOT_MODEL.provider}/${BOT_MODEL.id} với thinking ${BOT_MODEL.thinking}; kiểm tra model/auth và bridge/model.ts`);
+      throw new PiFailure('connection', `Không khởi động được Pi RPC: cần ${BOT_MODEL.provider}/${BOT_MODEL.id} với thinking ${BOT_MODEL.thinking}; kiểm tra model/auth và extension trong bridge/README.md`);
     }
   }
 

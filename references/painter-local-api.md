@@ -99,9 +99,13 @@ node scripts/export-slide.mjs \
 
 `exported` (tạo ảnh đích) và `reused` (đích đã khớp từng byte) đều thành công.
 Nếu ảnh đích khác, lệnh dừng mà không ghi đè; đối chiếu lại draft và revision.
-Điền đúng đường dẫn JPG vào episode.json, chỉ bổ sung dòng kiểm tra còn thiếu
-trong notes, rồi lưu snapshot vào `output/rNN/episode.json`. Mở lại từng
-ảnh cuối, không chỉ draft; chữ/dấu phải còn rõ. Đặt `ready_for_review` chỉ khi
+Sau khi đã tự xem ảnh đạt, có thể thêm `--checked` trước hai đường dẫn và
+truyền ghi chú kiểm tra làm đối số cuối. Cùng một lệnh xuất ảnh, đối chiếu
+SHA-256 và lưu biên bản trong `output/rNN/checks/TÊN_ẢNH.json`. Nếu byte ảnh
+cuối khớp ảnh đã đối chiếu và biên bản vẫn đúng với kịch bản/snapshot, không
+cần mở lại ảnh cuối chỉ vì nó đã được xuất; nếu không, phải xem ảnh thật.
+Điền đúng đường dẫn JPG vào episode.json, bổ sung phần kiểm tra còn thiếu
+trong notes, rồi lưu snapshot vào `output/rNN/episode.json`. Đặt `ready_for_review` chỉ khi
 đủ trang đã đạt. `/files` gửi nguyên artifact JPEG đã chốt, không phải raw
 response. Không nén lại PNG cũ. Với Telegram, chỉ giữ output/snapshot mới
 nhất sau khi gửi đủ; raw/draft/prompt và bản bị thay thế được bridge dọn theo

@@ -3,7 +3,9 @@ import { imageMime } from './artifacts.ts';
 export type Update = {
   update_id: number;
   message?: { from?: { id: number; is_bot?: boolean }; chat: { id: number; type: string }; text?: string };
+  callback_query?: { id: string; from: { id: number; is_bot?: boolean }; message?: { chat: { id: number; type: string } }; data?: string };
 };
+type Button = { text: string; callback_data: string };
 
 export class TelegramError extends Error {
   ambiguous: boolean;
@@ -40,14 +42,20 @@ export class Telegram {
     return result.result;
   }
   poll(offset: number) {
-    return this.call<Update[]>('getUpdates', { offset, timeout: 25, allowed_updates: ['message'] });
+    return this.call<Update[]>('getUpdates', { offset, timeout: 25, allowed_updates: ['message', 'callback_query'] });
   }
   authorized(update: Update) {
-    const message = update.message;
-    return message?.chat.type === 'private' && message.chat.id === this.owner && message.from?.id === this.owner && !message.from.is_bot;
+    const callback = update.callback_query;
+    const chat = callback ? callback.message?.chat : update.message?.chat;
+    const from = callback ? callback.from : update.message?.from;
+    return chat?.type === 'private' && chat.id === this.owner && from?.id === this.owner && !from.is_bot;
   }
-  async say(text: string) {
-    await this.call('sendMessage', { chat_id: this.owner, text: text.slice(0, 4000) });
+  async say(text: string, buttons?: Button[]) {
+    await this.call('sendMessage', { chat_id: this.owner, text: text.slice(0, 4000),
+      ...(buttons?.length ? { reply_markup: { inline_keyboard: buttons.map(button => [button]) } } : {}) });
+  }
+  async acknowledge(id: string) {
+    await this.call('answerCallbackQuery', { callback_query_id: id }, 5_000);
   }
   async trace(text: string, message?: number): Promise<number> {
     const result = await this.call<{ message_id: number }>(message ? 'editMessageText' : 'sendMessage',

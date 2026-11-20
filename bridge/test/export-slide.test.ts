@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -34,6 +35,24 @@ test('exports a checked draft once and reuses matching bytes without writing aga
   assert.equal(after.mtimeMs, before.mtimeMs);
   assert.deepEqual(await readFile(output), bytes);
   assert.deepEqual(await readdir(dirname(output)), ['001.jpg']);
+});
+
+test('exports, verifies SHA-256 and writes a checkpoint in one invocation, including on recovery', async t => {
+  const { draft, output, bytes } = await setup(t);
+  const note = 'Đã đối chiếu chữ, dấu, nhân vật và bố cục.';
+  const checked = () => spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', draft, output, note], { encoding: 'utf8' });
+  assert.equal(cli(draft, output).status, 0); // Recover an export interrupted before its checkpoint.
+  const result = checked();
+  assert.equal(result.status, 0, result.stderr);
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const checkpoint = join(dirname(output), 'checks', '001.jpg.json');
+  assert.deepEqual(JSON.parse(result.stdout), { state: 'reused', output, checkpoint, sha256 });
+  const saved = await readFile(checkpoint, 'utf8');
+  assert.deepEqual(JSON.parse(saved), { image: '001.jpg', draft: '../../image.jpg', sha256, visual_check: note });
+  assert.equal(checked().status, 0);
+  await writeFile(output, Buffer.from('different bytes'));
+  assert.equal(checked().status, 1);
+  assert.equal(await readFile(checkpoint, 'utf8'), saved);
 });
 
 test('refuses different bytes and a symlink without overwriting either', async t => {

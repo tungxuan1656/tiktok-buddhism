@@ -27,7 +27,13 @@ class FakeTelegram extends Telegram {
   sendHook?: () => Promise<void>;
   traces: string[] = [];
   constructor() { super('not-a-real-token', 123); }
-  override async say(text: string) { this.texts.push(text); }
+  buttons: NonNullable<Parameters<Telegram['say']>[1]> = [];
+  callbacks: string[] = [];
+  override async say(text: string, buttons?: Parameters<Telegram['say']>[1]) {
+    this.texts.push(text);
+    if (buttons) this.buttons = buttons;
+  }
+  override async acknowledge(id: string) { this.callbacks.push(id); }
   override async trace(text: string, message?: number) { this.traces.push(text); return message ?? 100; }
   override async photos(files: { bytes: Uint8Array; name: string; caption: string }[]) {
     await this.sendHook?.();
@@ -121,8 +127,11 @@ test('only configured private owner is accepted; duplicate updates never generat
   assert.deepEqual(telegram.documents, []);
 });
 
-test('ordinary follow-ups reuse task/session; /done keeps session; /new preserves each task latest output', async t => {
-  const { bridge, store, runner } = await setup(t);
+test('follow-ups reuse the session; /done rotates it; /new parks tasks for reopening by the owner', async t => {
+  const { bridge, store, runner, telegram } = await setup(t);
+  const choose = (update_id: number, id: string, from = 123, type = 'private') => ({ update_id, callback_query: {
+    id: `cb${update_id}`, from: { id: from }, message: { chat: { id: 123, type } }, data: `episode:${id}`,
+  } });
   runner.hook = async () => {
     const count = store.db.prepare('SELECT COUNT(*) AS n FROM runs WHERE task=?').get(store.current()!.id) as { n: number };
     await fixture(store, 1, `r${String(count.n).padStart(2, '0')}`);
@@ -134,12 +143,50 @@ test('ordinary follow-ups reuse task/session; /done keeps session; /new preserve
   assert.equal(store.deliveries().length, 1);
   await bridge.receive(message(3, '/done'));
   await bridge.receive(message(4, 'Tập tiếp')); await settled(bridge);
-  assert.notEqual(store.current()!.id, first.id);
-  assert.equal(runner.calls[0], runner.calls[2]);
+  const second = store.current()!;
+  assert.notEqual(second.id, first.id);
+  assert.equal(runner.calls[0], runner.calls[1]);
+  assert.notEqual(runner.calls[0], runner.calls[2]);
   await bridge.receive(message(5, '/new'));
   await bridge.receive(message(6, 'Tập mới')); await settled(bridge);
-  assert.notEqual(runner.calls[0], runner.calls[3]);
+  const third = store.current()!;
+  assert.notEqual(third.session, second.session);
+  await bridge.receive(message(7, '/episodes'));
+  assert.deepEqual(telegram.buttons.map(button => button.callback_data), [`episode:${third.id}`, `episode:${second.id}`]);
+  await bridge.receive(choose(8, second.id, 999));
+  await bridge.receive(choose(9, second.id, 123, 'group'));
+  assert.equal(store.current()!.id, third.id);
+  await bridge.receive(choose(10, first.id));
+  assert.equal(store.current()!.id, third.id);
+  await bridge.receive(choose(11, second.id));
+  await bridge.receive(choose(11, third.id));
+  assert.deepEqual(telegram.callbacks, ['cb10', 'cb11']);
+  assert.equal(store.current()!.id, second.id);
+  assert.equal(store.get('session'), second.session);
+  assert.equal(runner.calls.length, 4);
+  await bridge.receive(message(12, 'Sửa tập cũ')); await settled(bridge);
+  assert.equal(runner.calls.at(-1), second.session);
+  await bridge.receive(message(13, '/done'));
+  assert.deepEqual(store.unfinished(0, 10).map(task => task.id), [third.id]);
   assert.ok(await readFile(join(first.dir, 'output/r02/001.png')));
+});
+
+test('parking holds pending delivery until an explicit /resend after reactivation', async t => {
+  const { bridge, store, runner, telegram } = await setup(t);
+  runner.hook = async () => { await fixture(store, 1); };
+  await bridge.receive(message(1, 'Tập')); await settled(bridge);
+  const task = store.current()!;
+  const file = store.deliveries()[0];
+  store.deliveryState(file, 'pending');
+  await bridge.receive(message(2, '/new'));
+  assert.equal(store.deliveries()[0].state, 'held');
+  await bridge.receive({ update_id: 3, callback_query: { id: 'cb3', from: { id: 123 }, message: { chat: { id: 123, type: 'private' } }, data: `episode:${task.id}` } });
+  assert.equal(store.current()?.id, task.id);
+  assert.equal(bridge.active, undefined);
+  assert.equal(telegram.sent.length, 1);
+  await bridge.receive(message(4, '/resend')); await settled(bridge);
+  assert.equal(telegram.sent.length, 2);
+  assert.equal(runner.calls.length, 1);
 });
 
 test('cancel fences late results, holds queued additions, and refuses /new while busy', async t => {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ContextEvent, ExtensionAPI, ExtensionContext, SessionStartEvent } from '@earendil-works/pi-coding-agent';
-import install, { BOT_MODEL, imageWindow } from '../model.ts';
+import install, { BOT_MODEL, projectImages } from '../model.ts';
 
 type Model = Parameters<ExtensionAPI['setModel']>[0];
 const model: Model = {
@@ -64,24 +64,37 @@ function images(messages: ContextEvent['messages']) {
     ? message.content.filter(block => block.type === 'image') : []);
 }
 
-test('context hook keeps the latest eight images and all text/tool ordering without editing history', () => {
-  const original = Array.from({ length: 12 }, (_, i) => imageMessage(i));
+function assistant(...indices: number[]): ContextEvent['messages'][number] {
+  const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  return { role: 'assistant', timestamp: 0, api: 'openai-completions', provider: BOT_MODEL.provider, model: BOT_MODEL.id,
+    stopReason: 'toolUse', usage: { ...tokens, totalTokens: 0, cost: { ...tokens, total: 0 } },
+    content: indices.map(index => ({ type: 'toolCall', id: `read-${index}`, name: 'read', arguments: { path: `${index}.jpg` } })) };
+}
+
+test('context only shows the latest deliberate reads and never changes earlier projected history', () => {
+  const attached = { role: 'user', timestamp: 1, content: [{ type: 'image', data: 'attachment', mimeType: 'image/png' }] } as const;
+  const original: ContextEvent['messages'] = [{ ...attached, content: [...attached.content] }, assistant(0), imageMessage(0), assistant(1, 2), imageMessage(1), imageMessage(2)];
   const before = structuredClone(original);
   const projected = fixture(model).project(original);
-  assert.deepEqual(images(projected).map(image => image.data), Array.from({ length: 8 }, (_, i) => `image-${i + 4}`));
+  assert.deepEqual(images(projected).map(image => image.data), ['image-1', 'image-2']);
   assert.deepEqual(projected.map(message => message.timestamp), original.map(message => message.timestamp));
-  assert.match(JSON.stringify(projected[0]), /không suy đoán/);
-  assert.match(JSON.stringify(projected[0]), /image 0/);
+  assert.match(JSON.stringify(projected[2]), /không suy đoán/);
+  assert.match(JSON.stringify(projected[2]), /image 0/);
   assert.deepEqual(original, before);
-  assert.deepEqual(imageWindow(projected), projected);
+  const next = projectImages([...original, assistant(3), imageMessage(3)]);
+  assert.deepEqual(next.slice(0, 4), projected.slice(0, 4));
+  assert.deepEqual(images(next).map(image => image.data), ['image-3']);
+  assert.deepEqual(images(projectImages([...original, { role: 'user', content: 'Next request', timestamp: 3 }])), []);
 });
 
-test('image byte budget also bounds a few large images, while original data stays available', () => {
+test('the image budget applies only to fresh reads; other tool and custom images are not sent', () => {
   const data = 'A'.repeat(16 * 1024 * 1024);
-  const original = [imageMessage(1, data), imageMessage(2, data), imageMessage(3, data)];
-  const projected = imageWindow(original);
+  const original = [assistant(1, 2, 3), imageMessage(1, data), imageMessage(2, data), imageMessage(3, data)];
+  const projected = projectImages(original);
   assert.equal(images(projected).length, 2);
-  assert.equal(images(projected).reduce((bytes, image) => bytes + image.data.length, 0), 32 * 1024 * 1024);
   assert.equal(images(original).length, 3);
-  assert.deepEqual(imageWindow([{ role: 'user', content: 'keep this text', timestamp: 1 }]), [{ role: 'user', content: 'keep this text', timestamp: 1 }]);
+  const [result] = images([imageMessage(1)]);
+  const unsolicited = projectImages([assistant(1), { ...imageMessage(1), toolName: 'other' } as ContextEvent['messages'][number],
+    { role: 'custom', customType: 'test', display: true, content: [result], timestamp: 1 }]);
+  assert.doesNotMatch(JSON.stringify(unsolicited), /"type":"image"/);
 });

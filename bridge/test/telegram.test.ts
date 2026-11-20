@@ -6,6 +6,23 @@ const photos = (count: number) => Array.from({ length: count }, (_, i) => ({
   bytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, i]), name: `${String(i + 1).padStart(3, '0')}.png`, caption: `slide ${i + 1}`,
 }));
 
+test('episode picker uses inline buttons and acknowledges callbacks in the private bot flow', async () => {
+  const calls: { method: string; body: object }[] = [];
+  const telegram = new Telegram('fake-token', 123, async (url, init) => {
+    calls.push({ method: String(url).split('/').at(-1)!, body: JSON.parse(String(init?.body)) });
+    return new Response(JSON.stringify({ ok: true, result: [] }));
+  });
+  const button = { text: 'Tập A', callback_data: 'episode:1' };
+  await telegram.poll(10);
+  await telegram.say('Chọn tập', [button]);
+  await telegram.acknowledge('cb1');
+  assert.deepEqual(calls, [
+    { method: 'getUpdates', body: { offset: 10, timeout: 25, allowed_updates: ['message', 'callback_query'] } },
+    { method: 'sendMessage', body: { chat_id: 123, text: 'Chọn tập', reply_markup: { inline_keyboard: [[button]] } } },
+    { method: 'answerCallbackQuery', body: { callback_query_id: 'cb1' } },
+  ]);
+});
+
 test('photo transport uses fixed private owner, ordered multipart albums and sendPhoto for a singleton', async () => {
   for (const count of [1, 2, 10]) {
     const files = photos(count).map((file, i) => i % 2 ? { ...file, bytes: new Uint8Array([255, 216, 255, 224]), name: file.name.replace('.png', '.jpeg') } : file);
