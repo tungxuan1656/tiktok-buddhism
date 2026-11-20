@@ -250,7 +250,7 @@ export class Bridge {
         await this.say('Mình bắt đầu làm nhé. Bạn có thể dùng /status để xem tiến độ.');
         if (controller.signal.aborted) throw new Error('Đã hủy');
         stage = 'pi';
-        await this.runner.run(task.session, `Thực hiện yêu cầu Telegram trong file ${join(handoff, 'request.json')}. Đọc bridge/agent.md và các tài liệu hiện hành. Không có ảnh đính kèm: chọn file cần xem từ kịch bản, checkpoint và status của đúng trang; dùng read với đúng ảnh trên đĩa khi cần kiểm tra thị giác. Kết quả máy đọc phải ghi vào ${join(handoff, 'result.json')}.`,
+        await this.runner.run(task.session, `Thực hiện yêu cầu Telegram trong file ${join(handoff, 'request.json')}. Làm theo bridge/agent.md. Ghi kết quả vào ${join(handoff, 'result.json')}.`,
           phase => { if (!controller.signal.aborted) this.store.taskState(task.id, 'running', phase); }, controller.signal,
           line => { if (!controller.signal.aborted) this.trace.add(line); });
       }

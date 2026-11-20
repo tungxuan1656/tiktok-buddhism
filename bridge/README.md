@@ -50,12 +50,11 @@ pi install npm:billion-context
 pi install npm:pi-web-access
 ```
 
-AGENTS.md và hướng dẫn nội dung vẫn được nạp. Bridge không đưa ảnh vào prompt:
-Pi đọc đúng file trên đĩa khi cần kiểm tra. Ảnh trả từ `read` chỉ đi vào lượt GPT
-ngay sau đó; file và transcript không bị xóa. Sau khi xem và xác nhận ảnh đạt,
-Pi dùng `export-slide.mjs --checked` để xuất, đối chiếu SHA-256 và ghi checkpoint
-bằng một lượt tool. Pi child không nhận giá trị biến `TELEGRAM_*`. Bridge không
-thay đổi cấu hình Pi khi bạn chạy trực tiếp.
+AGENTS.md và hướng dẫn bàn giao vẫn được nạp. Bridge chuyển yêu cầu bằng chữ
+và đường dẫn, không lọc ảnh hay đặt giới hạn dung lượng ngữ cảnh riêng. Pi tự
+chọn công cụ và tệp cần đọc; Pi và các extension đã nạp quản lý ngữ cảnh.
+Pi child không nhận giá trị biến `TELEGRAM_*`. Bridge không thay đổi cấu hình
+Pi khi bạn chạy trực tiếp.
 
 Bot chỉ chấp nhận đồng thời `from.id == chat.id == TELEGRAM_USER_ID` và
 `chat.type == private`; nhóm, người lạ, bot khác không được giao việc. Bot
@@ -206,13 +205,6 @@ lượt Pi là 2 giờ để bộ dài có thời gian tạo và kiểm tra từ
 `/cancel` bất kỳ lúc nào. Sự kiện tool chỉ cho biết hoạt động, không chứng minh
 API đã xong. Nếu yêu cầu ảnh chưa rõ, Pi phải dừng hỏi, không tự gọi lại.
 
-**Lịch sử nhiều ảnh:** trước mỗi request model, extension của bot chỉ giữ tối đa
-8 ảnh gần nhất và 32 MiB base64 ảnh trong ngữ cảnh. Ảnh cũ thay bằng nhắc đọc lại,
-không xóa transcript, ảnh, nguồn hoặc biên bản kiểm tra. Tránh cộng dồn hàng chục
-ảnh vượt giới hạn body của gateway; đây không phải giới hạn tổng văn bản/token.
-Pi phải lưu kiểm tra sau từng ảnh và mở lại ảnh/vùng cần xem, không đoán phần đã
-lược. Không đổi provider/model hoặc tự chuyển đổi lại ảnh cũ để khắc phục.
-
 **Tạo ảnh mới:** Pi bắt buộc dùng [draw-image.mjs](../scripts/draw-image.mjs)
 theo [hướng dẫn API](../references/painter-local-api.md). Phải lưu đầy đủ
 kịch bản JSON trước: `--slide EPISODE_JSON N ...` hoặc `--character EPISODE_JSON
@@ -270,7 +262,7 @@ nhận trùng, session/task, revision, hủy/khởi động lại, upload chưa 
 đường dẫn/symlink, file ảnh, đóng băng outbox, khóa tiến trình đồng thời và trace
 10 dòng (quyền truy cập, gộp/edit tin nhắn, ẩn nội dung nhạy cảm, lỗi mạng),
 mức suy luận `high` chỉ trong session bot, không sửa metadata/provider/mặc định;
-cửa sổ ảnh không sửa lịch sử, giới hạn byte, lỗi model trước settlement,
+không đăng ký bộ lọc ngữ cảnh riêng trong extension của bridge, lỗi model trước settlement,
 thông báo lỗi đã lọc và deadline 2 giờ.
 Wrapper được thử với HTTP giả cục bộ và ImageMagick thật: request/reference
 MIME, giữ raw, JPEG95/4:4:4, normalize-only, trạng thái lỗi và không tự retry.
