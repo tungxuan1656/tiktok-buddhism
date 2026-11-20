@@ -66,7 +66,9 @@ async function main() {
     process.once('SIGINT', stop);
     process.once('SIGTERM', stop);
     try {
-      await telegram.say(interrupted ? 'Bridge đã khởi động lại. Tập đang chạy bị đánh dấu gián đoạn, không tự tạo lại ảnh. Dùng /status và nhắn hướng xử lý sau khi xác định trạng thái API.' : 'Bridge sẵn sàng. Nhắn yêu cầu làm slide hoặc /status.');
+      await telegram.say(interrupted
+        ? 'Mình vừa khởi động lại nên công việc trước đó bị gián đoạn. Phần đã làm vẫn được giữ lại và mình sẽ không tự vẽ lại. Bạn dùng /status để xem tình hình nhé.'
+        : 'Mình sẵn sàng rồi. Bạn cứ nhắn nội dung muốn làm nhé.');
       console.log('Telegram bridge sẵn sàng (một chủ bot, private chat). Ctrl+C để dừng.');
       while (!quitting) {
         try {
@@ -96,9 +98,13 @@ async function main() {
 
 main().catch(error => {
   // Never print fetch/RPC errors: URLs, stderr and prompts can contain credentials.
-  console.error(error instanceof TelegramError ? 'Không kết nối được Telegram. Kiểm tra token/mạng; không tự tạo ảnh.' :
-    error instanceof Error && /^(Thiếu |Bot đang |Bridge khác|Lock không|Không khởi động)/.test(error.message) ? error.message :
-      'Bridge dừng vì lỗi cục bộ. Kiểm tra Node 24, ImageMagick, quyền ghi và chạy npm run check.');
+  if (error instanceof TelegramError) {
+    console.error('Không kết nối được Telegram. Kiểm tra token/mạng; không tự tạo ảnh.');
+  } else if (error instanceof Error && /^(Thiếu |Bot đang |Bridge khác|Lock không|Không khởi động)/.test(error.message)) {
+    console.error(error.message);
+  } else {
+    console.error('Bridge dừng vì lỗi cục bộ. Kiểm tra Node 24, ImageMagick, quyền ghi và chạy npm run check.');
+  }
   process.exitCode = 1;
 }).finally(() => {
   // PM2 keeps an IPC handle open after cleanup; finish the managed process explicitly.

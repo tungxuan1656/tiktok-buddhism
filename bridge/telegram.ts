@@ -73,8 +73,12 @@ export class Telegram {
       data.set('photo', new Blob([new Uint8Array(files[0].bytes)], { type: imageMime(files[0].bytes) }), files[0].name);
       data.set('caption', files[0].caption);
     } else {
-      data.set('media', JSON.stringify(files.map((file, i) => ({ type: 'photo', media: `attach://photo${i}`, caption: file.caption }))));
-      files.forEach((file, i) => data.set(`photo${i}`, new Blob([new Uint8Array(file.bytes)], { type: imageMime(file.bytes) }), file.name));
+      data.set('media', JSON.stringify(files.map((file, i) => ({
+        type: 'photo', media: `attach://photo${i}`, caption: file.caption || undefined,
+      }))));
+      files.forEach((file, i) => {
+        data.set(`photo${i}`, new Blob([new Uint8Array(file.bytes)], { type: imageMime(file.bytes) }), file.name);
+      });
     }
     const result = await this.call<{ message_id: number } | { message_id: number }[]>(files.length === 1 ? 'sendPhoto' : 'sendMediaGroup', data, 120_000);
     const messages = Array.isArray(result) ? result : [result];

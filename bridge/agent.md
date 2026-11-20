@@ -48,10 +48,12 @@ Trước bàn giao, xác nhận từng trang đã được mở, đọc đối c
   "status": "ready_for_review",
   "revision": "r01",
   "checked": true,
-  "message": "Mô tả ngắn thành phẩm và điều người dùng cần biết, không log kỹ thuật hay bí mật.",
+  "message": "Tập “Giữ gìn tài sản” giữ nguyên đoạn trích và để phần lời bàn riêng.",
   "files": ["output/r01/001.jpg", "output/r01/002.jpg"]
 }
 ```
+
+`message` được gửi nguyên câu cho người dùng. Viết tự nhiên, tối đa hai câu về nội dung hoặc lưu ý thật sự cần biết. Không ghi mã tập, mã lượt, mã bản, trạng thái nội bộ, đường dẫn, log hay bí mật. Không lặp số ảnh, lời báo đã gửi hoặc hướng dẫn lệnh vì bridge sẽ thêm các phần đó.
 
 Danh sách files phải khớp từng slides[].image của snapshot. Không kê file ngoài revision. Bridge kiểm tra file thật, định dạng, kích thước, hash, giữ nguyên bytes JPEG/PNG đã chốt rồi mặc định gửi album ảnh đúng thứ tự (Telegram có thể nén). Người dùng dùng /files để lấy document nguyên bytes artifact đã chốt, không phải raw response API; không mã hóa lại để phục vụ album.
 
@@ -62,8 +64,10 @@ Nếu thiếu nội dung, nguồn chính xác, quyền hoặc API bị chặn/ch
   "task_id": "ID chính xác",
   "run_id": "ID chính xác",
   "status": "needs_input",
-  "message": "Một câu hỏi cụ thể để tiếp tục; hoặc dùng status blocked và nêu lỗi/điểm chưa rõ."
+  "message": "Bạn muốn dùng bản dịch nào cho đoạn kinh này? Bạn gửi tên dịch giả hoặc đường dẫn nguồn giúp mình nhé."
 }
 ```
+
+Với `needs_input`, viết câu hỏi trực tiếp và cụ thể. Với `blocked`, nói ngắn gọn điều đang vướng và bước người dùng có thể làm; không đưa log kỹ thuật hoặc bí mật vào tin nhắn.
 
 Không ghi checked=true nếu chưa tự xem đầy đủ. `agent_settled` chỉ là dừng xử lý, không phải đạt chất lượng. Kiểm tra thị giác không chứng minh chính xác từng byte Unicode, quyền nguồn hoặc diện mạo lịch sử.

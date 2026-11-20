@@ -23,7 +23,9 @@ class FakeTelegram extends Telegram {
   texts: string[] = [];
   sent: string[] = [];
   albums: string[][] = [];
+  albumCaptions: string[][] = [];
   documents: string[] = [];
+  documentCaptions: string[] = [];
   sendHook?: () => Promise<void>;
   traces: string[] = [];
   constructor() { super('not-a-real-token', 123); }
@@ -38,11 +40,13 @@ class FakeTelegram extends Telegram {
   override async photos(files: { bytes: Uint8Array; name: string; caption: string }[]) {
     await this.sendHook?.();
     this.albums.push(files.map(file => file.name));
+    this.albumCaptions.push(files.map(file => file.caption));
     return files.map(file => { this.sent.push(`${file.name}:${hash(file.bytes)}`); return this.sent.length; });
   }
-  override async send(bytes: Uint8Array, name: string) {
+  override async send(bytes: Uint8Array, name: string, caption: string) {
     await this.sendHook?.();
     this.documents.push(name);
+    this.documentCaptions.push(caption);
     this.sent.push(`${name}:${hash(bytes)}`);
     return this.sent.length;
   }
@@ -92,7 +96,8 @@ test('failures keep a safe actionable cause in status and handoff without retryi
     const run = store.db.prepare('SELECT * FROM runs').get() as Run;
     const report = JSON.parse(await readFile(join(task.dir, 'handoff', run.id, 'failure.json'), 'utf8'));
     assert.equal(report.run_id, run.id);
-    assert.equal(report.code, failure instanceof PiFailure ? failure.code : failure ? 'pi' : 'handoff');
+    const stage = failure ? 'pi' : 'handoff';
+    assert.equal(report.code, failure instanceof PiFailure ? failure.code : stage);
     assert.equal(run.state, 'interrupted');
     assert.equal(task.state, 'needs_attention');
     assert.ok(task.phase.includes(report.message));
@@ -102,6 +107,22 @@ test('failures keep a safe actionable cause in status and handoff without retryi
     assert.equal(telegram.sent.length, 0);
     assert.equal(store.deliveries().length, 0);
   }
+});
+
+test('questions for the owner are sent as written, without a technical preamble', async t => {
+  const { bridge, store, runner, telegram } = await setup(t);
+  const question = 'Bạn muốn dùng bản dịch nào cho đoạn kinh này?';
+  runner.hook = async () => {
+    const task = store.current()!;
+    const run = store.db.prepare('SELECT * FROM runs').get() as Run;
+    await writeFile(join(task.dir, 'handoff', run.id, 'result.json'), JSON.stringify({
+      task_id: task.id, run_id: run.id, status: 'needs_input', message: question,
+    }));
+  };
+  await bridge.receive(message(1, 'Làm tập')); await settled(bridge);
+  assert.equal(telegram.texts.at(-1), question);
+  assert.equal(telegram.sent.length, 0);
+  assert.equal(await bridge.status(), question);
 });
 
 test('only configured private owner is accepted; duplicate updates never generate again', async t => {
@@ -153,6 +174,7 @@ test('follow-ups reuse the session; /done rotates it; /new parks tasks for reope
   assert.notEqual(third.session, second.session);
   await bridge.receive(message(7, '/episodes'));
   assert.deepEqual(telegram.buttons.map(button => button.callback_data), [`episode:${third.id}`, `episode:${second.id}`]);
+  assert.deepEqual(telegram.buttons.map(button => button.text), ['Đang mở · Tập mới', 'Tập tiếp']);
   await bridge.receive(choose(8, second.id, 999));
   await bridge.receive(choose(9, second.id, 123, 'group'));
   assert.equal(store.current()!.id, third.id);
@@ -197,6 +219,9 @@ test('cancel fences late results, holds queued additions, and refuses /new while
   await bridge.receive(message(1, 'Làm tập')); await entered.promise;
   await bridge.receive(message(2, 'Bổ sung đang chờ'));
   const task = store.current()!.id;
+  const status = await bridge.status();
+  assert.match(status, /Tin nhắn đang chờ hoặc được giữ lại: 1/);
+  assert.ok(!status.includes(task));
   await bridge.receive(message(3, '/new'));
   assert.equal(store.current()!.id, task);
   await bridge.receive(message(4, '/cancel'));
@@ -223,12 +248,47 @@ test('restart marks running requests interrupted and sending documents unknown; 
   assert.equal(store.get('offset'), '3');
 });
 
+test('/resend reports an empty queue, then delivers a hash-pinned manual handoff only for the owner', async t => {
+  const { bridge, runner, store, telegram } = await setup(t);
+  let data!: Awaited<ReturnType<typeof fixture>>;
+  runner.hook = async () => { data = await fixture(store); throw new PiFailure('model', 'HTTP 413'); };
+  await bridge.receive(message(1, 'Tập')); await settled(bridge);
+  const { task, report } = data;
+  await bridge.receive(message(2, '/resend'));
+  assert.match(telegram.texts.at(-1)!, /chưa có bộ ảnh sẵn sàng để gửi/);
+  const snapshot = await readFile(join(task.dir, 'output/r01/episode.json'));
+  await writeFile(join(task.dir, 'episode.json'), snapshot);
+  const sha256 = await Promise.all(report.files.map(async path => hash(await readFile(join(task.dir, path)))));
+  const manifest = { ...report, snapshot_sha256: hash(snapshot), sha256 };
+  const path = join(task.dir, 'handoff/manual.json');
+  await writeFile(path, JSON.stringify({ ...manifest, sha256: ['changed', sha256[1]] }));
+  await bridge.receive(message(3, '/resend')); await settled(bridge);
+  assert.equal(telegram.sent.length, 0);
+  assert.equal(store.deliveries().length, 0);
+  await writeFile(path, JSON.stringify(manifest));
+  assert.match(await bridge.status(), /đã kiểm tra thủ công.*\/resend/);
+  await bridge.tick();
+  await bridge.receive(message(4, '/resend', 999));
+  assert.equal(telegram.sent.length, 0);
+  await bridge.receive(message(5, '/resend')); await settled(bridge);
+  assert.deepEqual(telegram.albums, [['001.png', '002.png']]);
+  assert.deepEqual(store.deliveries().map(file => [file.state, file.hash]), sha256.map(digest => ['sent', digest]));
+  assert.match(telegram.texts.at(-1)!, /Mình gửi đủ 2 ảnh rồi[\s\S]*Đã kiểm tra/);
+  await bridge.receive(message(6, '/resend')); await settled(bridge);
+  assert.match(telegram.texts.at(-1)!, /đã gửi đủ ảnh/);
+  assert.equal(telegram.sent.length, 2);
+  assert.equal(runner.calls.length, 1);
+});
+
 test('ambiguous Telegram send stops ordered delivery; /resend sends stored bytes without Pi', async t => {
   const { bridge, store, runner, telegram } = await setup(t);
   runner.hook = async () => { await fixture(store); };
   telegram.sendHook = async () => { throw new TelegramError(true); };
   await bridge.receive(message(1, 'Tập')); await settled(bridge);
   assert.deepEqual(store.deliveries().map(f => f.state), ['unknown', 'unknown']);
+  assert.equal(telegram.texts.length, 2);
+  assert.match(telegram.texts[1], /chưa gửi đủ ảnh.*\/resend/);
+  assert.match(await bridge.status(), /Ảnh gửi lỗi hoặc chưa có xác nhận: 2/);
   await bridge.tick(); await settled(bridge);
   assert.equal(telegram.sent.length, 0);
   telegram.sendHook = undefined;
@@ -306,7 +366,13 @@ test('photo delivery splits eleven slides into an ordered album and one photo', 
   assert.deepEqual(telegram.albums.map(album => album.length), [10, 1]);
   assert.equal(telegram.albums[0][9], '010.png');
   assert.deepEqual(telegram.albums[1], ['011.png']);
+  assert.deepEqual(telegram.albumCaptions, [['Ảnh 1–10/11', ...Array(9).fill('')], ['Ảnh 11/11']]);
   assert.ok(store.deliveries().every(file => file.state === 'sent'));
+  assert.deepEqual(telegram.texts, [
+    'Mình bắt đầu làm nhé. Bạn có thể dùng /status để xem tiến độ.',
+    'Mình gửi đủ 11 ảnh rồi, bạn xem nhé!\n\nĐã kiểm tra.\n\nNếu cần chỉnh, bạn cứ nhắn mình. Muốn tải ảnh gốc, dùng /files.',
+  ]);
+  assert.equal(await bridge.status(), 'Mình đã gửi đủ ảnh. Bạn có thể xem hoặc dùng /files để tải ảnh gốc.');
 });
 
 test('a TikTok episode accepts all 35 slides and delivers four ordered Telegram albums', async t => {
@@ -540,6 +606,7 @@ test('only a fully delivered replacement prunes old outputs/drafts and keeps sou
   assert.equal(store.deliveries().length, 2);
   await bridge.receive(message(4, '/files')); await settled(bridge);
   assert.equal(telegram.documents.length, 2);
+  assert.deepEqual(telegram.documentCaptions, ['Tệp ảnh gốc 1/2', 'Tệp ảnh gốc 2/2']);
   assert.equal(runner.calls.length, 2);
 });
 

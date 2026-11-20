@@ -1,0 +1,38 @@
+{
+  "id": "BYAGGHAPAJJA_01",
+  "name": "Byagghapajja (thiết kế minh họa)",
+  "aliases": [
+    "Byagghapajja",
+    "Gia chủ Koliya"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam trung niên da nâu ấm, mặt hơi chữ điền, mày đen rõ, mắt hiền, ria mép đen và cằm cạo.",
+    "hair": "Tóc sẫm chải gọn có ngôi lệch, búi thấp tròn sau gáy.",
+    "body": "Vóc vừa chắc, tỷ lệ người trưởng thành; chân trần.",
+    "clothing": "Áo cổ xẻ nhẹ, tay dài màu kem che cả hai vai, vải quấn dưới cùng tông, khăn đất vàng nâu qua vai phải, không trang sức."
+  },
+  "keep": [
+    "Giữ ria mép đen, cằm cạo và búi tóc thấp có ngôi lệch.",
+    "Giữ áo/vạt kem và khăn đất vàng nâu qua vai phải.",
+    "Nét chì màu mảnh, vẻ hiền hòa."
+  ],
+  "can_vary": [
+    "Tư thế, ánh nhìn, cử chỉ tay và biểu cảm tiết chế."
+  ],
+  "avoid": [
+    "Tóc búi đỉnh đầu, y tu sĩ, râu cằm hoặc trang sức.",
+    "Khẳng định thiết kế này là diện mạo lịch sử."
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "note": "Minh họa gia chủ Koliya từ ngữ cảnh đoạn trích, dùng ảnh ví dụ gốc cho nét/màu. Mẫu đầu được xem sau nén, không chữ, đủ thân, đúng nhận diện.",
+    "sha256": "dd24cca245ca19c3c47ce34883821da1d8d581b558398199ee12f56f647139bd"
+  },
+  "review_note": "Chưa được người dùng duyệt."
+}

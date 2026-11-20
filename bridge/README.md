@@ -28,7 +28,7 @@ chmod 600 .env
    Nếu nhiều ID, tự đối chiếu; không chọn người gửi đầu tiên theo phỏng đoán.
 5. Chạy `npm run check`, rồi `npm start`. Check mở RPC và đọc state, **không**
    prompt model, gọi Telegram hoặc tạo ảnh. Exit 2 nghĩa thiếu cấu hình bot.
-6. Chờ tin “Bridge sẵn sàng” trên điện thoại, nhắn yêu cầu làm slide.
+6. Chờ tin “Mình sẵn sàng rồi” trên điện thoại, rồi nhắn nội dung muốn làm.
 
 Bot được ghim vào **`cx/gpt-6.2-sol`**, provider **`9router`**, thinking
 **`high`**; không dùng `PI_MODEL` hoặc model mặc định để chọn ngầm.
@@ -67,7 +67,8 @@ bridge dừng thay vì tự xóa nó. Lệnh identify không chạy khi service 
 Nhắn bình thường: “Minh họa nguyên văn đoạn kinh sau, chia trang theo nội
 dung và giữ đúng lời trích: [văn bản và nguồn]”. Pi tự làm
 và gửi **album ảnh đúng thứ tự**: 2–10 ảnh/album, một ảnh gửi riêng; hơn 10
-thì chia nhóm. Telegram có thể nén/đổi định dạng ảnh, không bảo đảm giữ nguyên
+thì chia nhóm. Mỗi nhóm có chú thích theo thứ tự, chẳng hạn “Ảnh 1–10/20”.
+Telegram có thể nén/đổi định dạng ảnh, không bảo đảm giữ nguyên
 chất lượng chữ. Artifact đã chốt vẫn lưu trên máy; `/files` tải revision mới nhất dưới
 dạng document, không tạo lại ảnh. Chỉ hỗ trợ tin nhắn chữ; ảnh/voice/file đầu
 vào chưa được tiếp nhận. **Mỗi tập/revision tối đa 35 ảnh**, tính cả bìa/trang
@@ -83,7 +84,7 @@ không tự giảm chất lượng hoặc âm thầm chuyển sang tệp.
 
 | Lệnh | Ý nghĩa |
 | --- | --- |
-| `/status` | Task hiện tại, giai đoạn gần nhất, số tin chờ/giữ lại và file gửi thiếu/lỗi |
+| `/status` | Xem tiến độ và số tin nhắn đang chờ, ảnh chưa gửi hoặc chưa xác nhận (nếu có) |
 | `/trace_on` | Theo dõi trực tiếp bằng một tin nhắn được cập nhật, tối đa 10 dòng mới nhất |
 | `/trace_off` | Tắt cập nhật trực tiếp, vẫn giữ bộ đệm log |
 | `/log` | Xem ngay 10 dòng mới nhất, kể cả khi Pi đang chạy |
@@ -92,7 +93,7 @@ không tự giảm chất lượng hoặc âm thầm chuyển sang tệp.
 | `/new` | Tạm cất tập hiện tại (chưa kết thúc), mở session mới cho tập tiếp theo |
 | `/episodes` | Liệt kê tập chưa kết thúc; bấm nút để chọn lại đúng session của tập. Dùng `/episodes 2` để xem trang 2 nếu có |
 | `/files` | Gửi toàn bộ tệp JPEG/PNG đã chốt của revision đã chốt mới nhất trong tập hiện tại; đợi lượt đang chạy/gửi xong trước |
-| `/resend` | Chỉ gửi lại phần chưa nhận của tập hiện tại, giữ kiểu ảnh/tệp đã lưu của từng revision; không gọi Pi |
+| `/resend` | Gửi lại phần chưa nhận, hoặc bàn giao bản thủ công đã có biên bản hợp lệ; không gọi Pi |
 
 `/start` hoặc lệnh chưa biết hiển thị hướng dẫn. Tin nhắn sau mặc định sửa
 **cùng tập**, cùng session/snapshot nhân vật, xuất revision mới. Muốn tập mới:
@@ -227,6 +228,18 @@ JPEG95 có mất dữ liệu nên Pi vẫn phải kiểm tra chữ/dấu sau né
 (HTTP, JSON bị từ chối, mất kết nối, timeout hoặc lỗi manifest), không gửi raw
 provider response hay bí mật. Sau khi xử lý nguyên nhân, nhắn hướng tiếp tục
 cùng tập; `/new` chỉ để mở tập khác, không phải cách bắt buộc để cứu ảnh cũ.
+
+**Bàn giao thủ công sau khi Pi lỗi:** chốt `episode.json`, snapshot revision và
+`notes.md` theo WORKFLOW như thường. Chỉ sau khi đã kiểm tra ảnh, lưu
+`handoff/manual.json` trong chính thư mục tập. Dùng các trường manifest thường
+(`task_id`, `status: "ready_for_review"`, `checked: true`, `revision`, `message`,
+`files`) và thêm `snapshot_sha256` (SHA-256 của snapshot, cũng phải khớp
+`episode.json` hiện tại), cùng mảng `sha256` của ảnh theo thứ tự `files`. Bridge
+tự cấp `run_id` khi chủ bot gửi `/resend` cho tập đang báo lỗi và chưa có ảnh
+trong hàng đợi. Bridge đối chiếu hash, tạo lượt bàn giao như thường và không
+mở Pi. Nếu thiếu biên bản, `/resend` báo không có ảnh chờ thay vì tự quét thư
+mục. Chỉ báo hoàn tất khi Telegram xác nhận đủ ảnh; `/done` vẫn là bước riêng
+để đóng tập và mở session mới.
 
 **Gửi Telegram:** ghi `sending` cho cả nhóm trong một transaction trước POST;
 chỉ ghi `sent` và từng message_id cùng lúc sau khi nhận đủ xác nhận. Mất mạng,

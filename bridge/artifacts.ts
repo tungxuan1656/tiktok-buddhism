@@ -20,11 +20,27 @@ async function confined(root: string, path: string): Promise<string> {
   return full;
 }
 
-async function json(root: string, path: string) {
+async function json(root: string, path: string, sha256?: string) {
   const full = await confined(root, path);
   if ((await stat(full)).size > 128 * 1024) throw new Error('JSON kết quả quá lớn');
-  try { return JSON.parse(await readFile(full, 'utf8')); }
+  const bytes = await readFile(full);
+  if (sha256 !== undefined && hash(bytes) !== sha256) throw new Error('Snapshot đã thay đổi sau khi kiểm tra');
+  try { return JSON.parse(bytes.toString('utf8')); }
   catch { throw new Error('Không đọc được JSON kết quả'); }
+}
+
+export async function manualHandoff(task: Task): Promise<Record<string, unknown> | undefined> {
+  const path = 'handoff/manual.json';
+  const entry = await lstat(join(task.dir, path)).catch(error => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+  if (!entry) return;
+  if (!entry.isFile()) throw new Error('Biên bản thủ công không phải file thường');
+  const report = await json(task.dir, path);
+  if (!report || report.task_id !== task.id || report.status !== 'ready_for_review' || report.checked !== true) {
+    throw new Error('Biên bản thủ công không khớp tập hoặc chưa kiểm tra');
+  }
+  return report;
 }
 
 export function imageMime(bytes: Uint8Array): 'image/png' | 'image/jpeg' {
@@ -46,7 +62,7 @@ export async function imageBytes(path: string): Promise<Uint8Array> {
 
 export type Result = { status: 'ready_for_review' | 'blocked' | 'needs_input'; message: string; revision?: string; files: Omit<Delivery, 'state' | 'message'>[] };
 
-export async function collect(task: Task, run: Run, stateDir: string): Promise<Result> {
+export async function collect(task: Task, run: Run, stateDir: string, manual = false): Promise<Result> {
   const report = await json(task.dir, `handoff/${run.id}/result.json`);
   if (report.run_id !== run.id || report.task_id !== task.id) throw new Error('Kết quả không thuộc lượt đang chạy');
   if (typeof report.message !== 'string' || report.message.length > 2000) throw new Error('Thiếu lời nhắn kết quả hợp lệ');
@@ -58,7 +74,14 @@ export async function collect(task: Task, run: Run, stateDir: string): Promise<R
   }
   if (!Array.isArray(report.files) || !report.files.length || report.files.length > 35) throw new Error('Danh sách ảnh không hợp lệ (1-35 ảnh, giới hạn một bài TikTok)');
   const prefix = `output/${report.revision}/`;
-  const episode = await json(task.dir, `${prefix}episode.json`);
+  if (manual) {
+    if (typeof report.snapshot_sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(report.snapshot_sha256)
+      || !Array.isArray(report.sha256) || report.sha256.length !== report.files.length) {
+      throw new Error('Biên bản thủ công thiếu hash đã kiểm tra');
+    }
+    await json(task.dir, 'episode.json', report.snapshot_sha256);
+  }
+  const episode = await json(task.dir, `${prefix}episode.json`, manual ? report.snapshot_sha256 : undefined);
   if (episode.status !== 'ready_for_review' || !Array.isArray(episode.slides) || episode.slides.length !== report.files.length) {
     throw new Error('Snapshot kịch bản không khớp kết quả');
   }
@@ -72,11 +95,13 @@ export async function collect(task: Task, run: Run, stateDir: string): Promise<R
     }
     const full = await confined(task.dir, path);
     const bytes = await imageBytes(full);
+    const digest = hash(bytes);
+    if (manual && digest !== report.sha256[i]) throw new Error('Ảnh thủ công đã thay đổi sau khi kiểm tra');
     const target = join(outbox, `${String(i + 1).padStart(3, '0')}${extname(path)}`);
     try { await copyFile(full, target, constants.COPYFILE_EXCL); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
-    if (hash(await readFile(target)) !== hash(bytes)) throw new Error('Ảnh thay đổi trong lúc chốt bàn giao');
-    files.push({ run: run.id, position: i + 1, path: target, hash: hash(bytes) });
+    if (hash(await readFile(target)) !== digest) throw new Error('Ảnh thay đổi trong lúc chốt bàn giao');
+    files.push({ run: run.id, position: i + 1, path: target, hash: digest });
   }
   return { status: 'ready_for_review', message: report.message, revision: report.revision, files };
 }

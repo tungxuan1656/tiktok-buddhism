@@ -25,7 +25,10 @@ test('episode picker uses inline buttons and acknowledges callbacks in the priva
 
 test('photo transport uses fixed private owner, ordered multipart albums and sendPhoto for a singleton', async () => {
   for (const count of [1, 2, 10]) {
-    const files = photos(count).map((file, i) => i % 2 ? { ...file, bytes: new Uint8Array([255, 216, 255, 224]), name: file.name.replace('.png', '.jpeg') } : file);
+    const files = photos(count).map((file, i) => ({
+      ...(i % 2 ? { ...file, bytes: new Uint8Array([255, 216, 255, 224]), name: file.name.replace('.png', '.jpeg') } : file),
+      caption: i === 0 ? (count === 1 ? 'Ảnh 1/1' : `Ảnh 1–${count}/${count}`) : '',
+    }));
     let calls = 0;
     const telegram = new Telegram('fake-token', 123, async (url, init) => {
       calls++;
@@ -38,7 +41,9 @@ test('photo transport uses fixed private owner, ordered multipart albums and sen
         assert.equal(data.get('media'), null);
         assert.equal(data.get('caption'), files[0].caption);
       } else {
-        assert.deepEqual(JSON.parse(String(data.get('media'))), files.map((file, i) => ({ type: 'photo', media: `attach://photo${i}`, caption: file.caption })));
+        assert.deepEqual(JSON.parse(String(data.get('media'))), files.map((_, i) => ({
+          type: 'photo', media: `attach://photo${i}`, ...(i === 0 ? { caption: files[0].caption } : {}),
+        })));
       }
       for (let i = 0; i < count; i++) {
         const upload = data.get(count === 1 ? 'photo' : `photo${i}`) as File;
@@ -60,7 +65,8 @@ test('JPEG uploads advertise their actual MIME and preserve original bytes for a
   let calls = 0;
   const telegram = new Telegram('fake-token', 123, async (url, init) => {
     calls++;
-    const upload = (init?.body as FormData).get(String(url).endsWith('/sendDocument') ? 'document' : 'photo') as File;
+    assert.ok(init?.body instanceof FormData);
+    const upload = init.body.get(String(url).endsWith('/sendDocument') ? 'document' : 'photo') as File;
     assert.equal(upload.type, 'image/jpeg');
     assert.equal(upload.name, '001.jpg');
     assert.deepEqual(new Uint8Array(await upload.arrayBuffer()), bytes);
