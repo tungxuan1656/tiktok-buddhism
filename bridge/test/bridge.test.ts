@@ -189,8 +189,151 @@ test('follow-ups reuse the session; /done rotates it; /new parks tasks for reope
   await bridge.receive(message(12, 'Sửa tập cũ')); await settled(bridge);
   assert.equal(runner.calls.at(-1), second.session);
   await bridge.receive(message(13, '/done'));
-  assert.deepEqual(store.unfinished(0, 10).map(task => task.id), [third.id]);
+  assert.deepEqual(store.listTasks(0, 10).map(task => task.id), [third.id]);
   assert.ok(await readFile(join(first.dir, 'output/r02/001.png')));
+});
+
+test('/reopen keeps the same episode and files but uses a fresh session', async t => {
+  const { bridge, store, runner, telegram } = await setup(t);
+  runner.hook = async () => { await fixture(store, 1); };
+  await bridge.receive(message(1, 'Tập đã chốt')); await settled(bridge);
+  const original = store.current()!;
+  const file = store.deliveries()[0];
+  await bridge.receive(message(2, '/done'));
+  await bridge.receive(message(3, 'Tập bị ngắt')); await settled(bridge);
+  const interrupted = store.current()!;
+  runner.hook = async () => { throw new Error('interrupted'); };
+  await bridge.receive(message(4, 'Tiếp tục')); await settled(bridge);
+  await bridge.receive(message(5, '/done'));
+  await bridge.receive(message(6, '/reopen'));
+  assert.deepEqual(telegram.buttons.map(button => button.text), ['Tập bị ngắt', 'Tập đã chốt']);
+  assert.deepEqual(telegram.buttons.map(button => button.callback_data), [`reopen:${interrupted.id}`, `reopen:${original.id}`]);
+  const choose = (update_id: number, task: string, from = 123) => ({ update_id, callback_query: {
+    id: `cb${update_id}`, from: { id: from }, message: { chat: { id: 123, type: 'private' } }, data: `reopen:${task}`,
+  } });
+  await bridge.receive(choose(7, original.id, 999));
+  assert.equal(store.current(), undefined);
+  await bridge.receive(choose(8, original.id));
+  const reopened = store.current()!;
+  assert.deepEqual({ id: reopened.id, dir: reopened.dir, state: reopened.state }, { id: original.id, dir: original.dir, state: 'idle' });
+  assert.notEqual(reopened.session, original.session);
+  await bridge.receive(choose(9, original.id));
+  assert.equal(store.current()?.session, reopened.session);
+  assert.deepEqual(store.deliveries(file.run), [file]);
+  assert.equal(telegram.sent.length, 2);
+  await bridge.receive(message(10, '/files')); await settled(bridge);
+  assert.deepEqual(telegram.sent.slice(2), [`001.png:${file.hash}`]);
+  assert.equal(runner.calls.length, 3);
+  await bridge.receive(choose(11, interrupted.id));
+  const recovery = store.current()!;
+  assert.equal(recovery.state, 'needs_attention');
+  assert.notEqual(recovery.session, interrupted.session);
+  assert.equal(runner.calls.length, 3);
+  let request: Record<string, unknown> | undefined;
+  runner.hook = async () => {
+    const run = store.db.prepare('SELECT * FROM runs ORDER BY rowid DESC LIMIT 1').get() as Run;
+    request = JSON.parse(await readFile(join(interrupted.dir, 'handoff', run.id, 'request.json'), 'utf8'));
+    await fixture(store, 1, 'r02');
+  };
+  await bridge.receive(message(12, 'Tiếp tục từ ảnh đã lưu')); await settled(bridge);
+  assert.equal(runner.calls.at(-1), recovery.session);
+  assert.equal(request?.episode_dir, interrupted.dir);
+  assert.equal(request?.task_id, interrupted.id);
+  assert.equal(request?.previous_state, 'needs_attention');
+});
+
+test('/reopen hands off saved uncommitted images but leaves committed uploads to /resend', async t => {
+  const { bridge, store, runner, telegram } = await setup(t);
+  const text = '  Văn bản đầy đủ\nNguồn: bản dịch đã chọn.  \n';
+  runner.hook = async () => { await fixture(store, 1); throw new PiFailure('model', 'HTTP 413'); };
+  await bridge.receive(message(1, text)); await settled(bridge);
+  const { id, dir, session } = store.current()!;
+  const snapshotPath = join(dir, 'output/r01/episode.json');
+  const snapshot = await readFile(snapshotPath, 'utf8');
+  const files = (JSON.parse(snapshot).slides as { image: string }[]).map(slide => slide.image);
+  const original = await readFile(join(dir, files[0]));
+  const request = async (run: Run) => JSON.parse(await readFile(join(dir, 'handoff', run.id, 'request.json'), 'utf8'));
+  const writeResult = async (run: Run, fields: object) => writeFile(join(dir, 'handoff', run.id, 'result.json'), JSON.stringify({
+    task_id: id, run_id: run.id, revision: 'r01', checked: true, message: 'Nội dung khớp.', ...fields,
+  }));
+  await bridge.receive(message(2, '/done'));
+  await bridge.receive(message(3, `/reopen_episode ${id}`));
+  const recoverySession = store.current()!.session;
+  assert.notEqual(recoverySession, session);
+  runner.hook = async () => {
+    const run = store.latestWork(id)!;
+    const savedRequest = await request(run);
+    assert.equal(savedRequest.user_message, text);
+    assert.equal(savedRequest.episode_dir, dir);
+    assert.deepEqual(savedRequest.committed_revisions, []);
+    await writeResult(run, { status: 'ready_for_review', files });
+  };
+  telegram.sendHook = async () => { throw new TelegramError(true); };
+  await bridge.receive(message(4, text)); await settled(bridge);
+  const committed = store.latestReady(id)!;
+  const pending = store.deliveries(committed.id);
+  assert.equal(committed.revision, 'r01');
+  assert.deepEqual(pending.map(file => [file.state, file.hash]), [['unknown', hash(original)]]);
+  assert.equal(runner.calls.at(-1), recoverySession);
+
+  await bridge.receive(message(5, '/done'));
+  await bridge.receive(message(6, `/reopen_episode ${id}`));
+  assert.notEqual(store.current()?.session, recoverySession);
+  runner.hook = async () => {
+    const run = store.latestWork(id)!;
+    assert.deepEqual((await request(run)).committed_revisions, [{ revision: 'r01', delivery: 'unsent' }]);
+    await writeResult(run, { status: 'unchanged' });
+  };
+  telegram.sendHook = undefined;
+  await bridge.receive(message(7, text)); await settled(bridge);
+  assert.equal((store.db.prepare('SELECT state FROM runs WHERE input=7').get() as Run).state, 'unchanged');
+  assert.deepEqual(store.deliveries(), pending);
+  assert.equal(telegram.sent.length, 0);
+  assert.match(telegram.texts.at(-1)!, /chưa gửi đủ.*\/resend/);
+  await bridge.receive(message(8, '/resend')); await settled(bridge);
+  assert.equal(telegram.sent.length, 1);
+  assert.equal(runner.calls.length, 3);
+  assert.equal(await readFile(snapshotPath, 'utf8'), snapshot);
+  assert.deepEqual(await readFile(join(dir, files[0])), original);
+  assert.match(await bridge.status(), /đã gửi đủ ảnh/);
+  await bridge.receive(message(9, '/done'));
+  await bridge.receive(message(10, `/reopen_episode ${id}`));
+  assert.equal(store.current()?.state, 'idle');
+  runner.hook = async () => {
+    const run = store.latestWork(id)!;
+    assert.deepEqual((await request(run)).committed_revisions, [{ revision: 'r01', delivery: 'sent' }]);
+    await writeResult(run, { status: 'unchanged' });
+  };
+  await bridge.receive(message(11, text)); await settled(bridge);
+  assert.equal(telegram.sent.length, 1);
+  assert.match(telegram.texts.at(-1)!, /đã gửi đủ.*\/files/);
+});
+
+test('/files completion or cancellation preserves newer interrupted work after /reopen', async t => {
+  const { bridge, store, runner, telegram } = await setup(t);
+  runner.hook = async () => { await fixture(store, 1); };
+  await bridge.receive(message(1, 'Tập')); await settled(bridge);
+  const { id, dir } = store.current()!;
+  runner.hook = async () => { await fixture(store, 1, 'r02'); throw new Error('interrupted'); };
+  await bridge.receive(message(2, 'Sửa')); await settled(bridge);
+  await bridge.receive(message(3, '/done'));
+  await bridge.receive(message(4, `/reopen_episode ${id}`));
+  const reopened = store.current()!;
+  assert.equal(reopened.state, 'needs_attention');
+  await bridge.receive(message(5, '/files')); await settled(bridge);
+  assert.deepEqual(telegram.documents, ['001.png']);
+  assert.deepEqual(store.current(), reopened);
+
+  const sending = deferred(); const release = deferred();
+  telegram.sendHook = async () => { sending.resolve(); await release.promise; };
+  runner.cancelHook = async () => { release.resolve(); };
+  await bridge.receive(message(6, '/files')); await sending.promise;
+  await bridge.receive(message(7, '/cancel'));
+  assert.equal(telegram.documents.length, 2);
+  assert.deepEqual(store.current(), reopened);
+  assert.equal(store.latestWork(id)?.state, 'interrupted');
+  assert.ok(await readFile(join(dir, 'output/r02/001.png')));
+  assert.equal(runner.calls.length, 2);
 });
 
 test('parking holds pending delivery until an explicit /resend after reactivation', async t => {

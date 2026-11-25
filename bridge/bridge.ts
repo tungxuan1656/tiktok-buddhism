@@ -22,6 +22,7 @@ Tin nhắn sau sẽ dùng để làm tiếp hoặc chỉnh cùng tập. Nếu đ
 /done: kết thúc tập hiện tại
 /new: tạm cất tập này để làm tập khác
 /episodes: chọn lại tập chưa kết thúc
+/reopen: mở lại tập đã kết thúc bằng session mới
 /files: tải tệp ảnh gốc của bản mới nhất
 /resend: gửi lại phần chưa gửi đủ, theo đúng dạng ảnh hoặc tệp lần trước. Có thể trùng nếu Telegram đã nhận nhưng chưa xác nhận.`;
 
@@ -52,8 +53,8 @@ export class Bridge {
     let text: string | undefined;
     if (allowed) {
       if (callback) {
-        const id = /^episode:([0-9a-f-]{36})$/.exec(callback.data ?? '')?.[1];
-        if (id) text = `/resume_episode ${id}`;
+        const selection = /^(episode|reopen):([0-9a-f-]{36})$/.exec(callback.data ?? '');
+        if (selection) text = `/${selection[1] === 'reopen' ? 'reopen_episode' : 'resume_episode'} ${selection[2]}`;
       } else if (typeof update.message?.text === 'string') text = update.message.text;
     }
     const fresh = this.store.receive(update.update_id, text?.trim() ? text : undefined);
@@ -79,57 +80,65 @@ export class Bridge {
       failed ? `Ảnh gửi lỗi hoặc chưa có xác nhận: ${failed}.` : '',
     ].filter(Boolean).join('\n');
   }
-  async listEpisodes(input: Input, argument?: string) {
+  async listEpisodes(input: Input, command: '/episodes' | '/reopen', argument?: string) {
     this.store.inputState(input.id, 'done');
+    const reopen = command === '/reopen';
     const page = argument === undefined ? 1 : Number(argument);
     if (!Number.isSafeInteger(page) || page < 1 || page > Math.floor(Number.MAX_SAFE_INTEGER / 15)) {
-      await this.say('Dùng /episodes để xem trang đầu, hoặc /episodes 2 để xem trang 2.');
+      await this.say(`Dùng ${command} để xem trang đầu, hoặc ${command} 2 để xem trang 2.`);
       return;
     }
-    const tasks = this.store.unfinished((page - 1) * 15, 16);
+    const tasks = this.store.listTasks((page - 1) * 15, 16, reopen);
     if (!tasks.length) {
-      await this.say(page === 1 ? 'Không có tập nào để mở lại.' : 'Trang này không có tập nào. Dùng /episodes để về trang đầu.');
+      await this.say(page === 1 ? (reopen ? 'Không có tập đã kết thúc.' : 'Không có tập nào để mở lại.') : `Trang này không có tập nào. Dùng ${command} để về trang đầu.`);
       return;
     }
     const current = this.store.current()?.id;
-    const navigation = [page > 1 ? `Trang trước: /episodes ${page - 1}.` : '', tasks.length > 15 ? `Trang sau: /episodes ${page + 1}.` : ''].filter(Boolean);
-    await this.say([`Bạn muốn làm tiếp tập nào? (Trang ${page})`, ...navigation].join('\n'), tasks.slice(0, 15).map(task => {
+    const navigation = [page > 1 ? `Trang trước: ${command} ${page - 1}.` : '', tasks.length > 15 ? `Trang sau: ${command} ${page + 1}.` : ''].filter(Boolean);
+    const heading = reopen ? 'Bạn muốn mở lại tập nào bằng session mới?' : 'Bạn muốn làm tiếp tập nào?';
+    await this.say([`${heading} (Trang ${page})`, ...navigation].join('\n'), tasks.slice(0, 15).map(task => {
       const title = Array.from(task.title?.trim().replace(/\s+/g, ' ') || task.phase).slice(0, 36).join('');
-      return { text: `${task.id === current ? 'Đang mở · ' : ''}${title}`, callback_data: `episode:${task.id}` };
+      return { text: `${task.id === current ? 'Đang mở · ' : ''}${title}`, callback_data: `${reopen ? 'reopen' : 'episode'}:${task.id}` };
     }));
   }
-  async changeEpisode(input: Input, command: '/new' | '/done' | '/resume_episode', id?: string) {
+  async changeEpisode(input: Input, command: '/new' | '/done' | '/resume_episode' | '/reopen_episode', id?: string) {
     if (this.active) {
       this.store.inputState(input.id, 'done');
       await this.say('Mình vẫn đang làm hoặc gửi ảnh cho tập này. Bạn đợi mình xong hoặc dùng /cancel để dừng trước nhé.');
       return;
     }
     const previous = this.store.current();
+    const reopen = command === '/reopen_episode';
+    const selecting = reopen || command === '/resume_episode';
     const resumed = this.store.transaction(() => {
       this.store.inputState(input.id, 'done');
-      const task = command === '/resume_episode' ? this.store.activateTask(id ?? '') : undefined;
-      if (command === '/resume_episode' && (!task || task.id === previous?.id)) return task;
-      if (command !== '/resume_episode') this.store.leaveTask(command === '/done');
+      const task = selecting ? this.store.activateTask(id ?? '', reopen) : undefined;
+      if (selecting && (!task || task.id === previous?.id)) return task;
+      if (!selecting) this.store.leaveTask(command === '/done');
       if (previous) this.store.holdDeliveries(previous.id);
       this.store.holdInputs();
       return task;
     });
-    if (command === '/resume_episode' && !resumed) {
-      await this.say('Tập này đã kết thúc hoặc không còn trong danh sách. Dùng /episodes để xem lại.');
+    if (selecting && !resumed) {
+      await this.say(reopen ? 'Tập này không còn trong danh sách đã kết thúc. Dùng /reopen để xem lại.'
+        : 'Tập này đã kết thúc hoặc không còn trong danh sách. Dùng /episodes hoặc /reopen để xem lại.');
       return;
     }
     if (!resumed || resumed.id !== previous?.id) this.trace.reset();
-    const message = resumed ? 'Mình đã mở lại tập bạn chọn. Bạn cứ nhắn phần muốn làm tiếp nhé.'
+    const message = reopen ? 'Mình đã mở lại tập bằng session mới và giữ nguyên phần đã làm. Bạn gửi lại toàn bộ văn bản và nguồn để mình đối chiếu, hoặc dùng /files nếu chỉ cần tải ảnh đã chốt.'
+      : resumed ? 'Mình đã mở lại tập bạn chọn. Bạn cứ nhắn phần muốn làm tiếp nhé.'
       : command === '/new' ? 'Bạn có thể nhắn yêu cầu cho tập mới. Nếu muốn quay lại tập cũ, dùng /episodes.'
-      : 'Mình đã đóng tập này. Ảnh và lịch sử vẫn được giữ lại. Tin nhắn tiếp theo sẽ bắt đầu một tập mới.';
+      : 'Mình đã đóng tập này. Ảnh và lịch sử vẫn được giữ lại. Tin nhắn tiếp theo sẽ bắt đầu một tập mới. Dùng /reopen nếu muốn mở lại tập đã đóng.';
     this.trace.add(message);
     await this.say(message);
   }
   async command(input: Input) {
     const [name, argument] = input.text.trim().split(/\s+/);
     const command = name.split('@')[0].toLowerCase();
-    if (command === '/episodes') return this.listEpisodes(input, argument);
-    if (command === '/new' || command === '/done' || command === '/resume_episode') return this.changeEpisode(input, command, argument);
+    if (command === '/episodes' || command === '/reopen') return this.listEpisodes(input, command, argument);
+    if (command === '/new' || command === '/done' || command === '/resume_episode' || command === '/reopen_episode') {
+      return this.changeEpisode(input, command, argument);
+    }
     if (command === '/log' || command === '/trace_on' || command === '/trace_off') {
       this.store.inputState(input.id, 'done');
       if (command === '/log') await this.say(this.trace.text());
@@ -167,7 +176,7 @@ export class Bridge {
         return;
       }
       const task = this.store.current();
-      const run = task ? this.store.db.prepare("SELECT * FROM runs WHERE task=? AND state='ready' AND revision IS NOT NULL ORDER BY rowid DESC LIMIT 1").get(task.id) as Run | undefined : undefined;
+      const run = task && this.store.latestReady(task.id);
       if (!run) {
         this.store.inputState(input.id, 'done');
         await this.say('Tập này chưa có bộ ảnh hoàn chỉnh để tải.');
@@ -240,7 +249,10 @@ export class Bridge {
     let stage = 'prepare';
     try {
       await mkdir(handoff, { recursive: true });
-      const request = { task_id: task.id, run_id: run.id, episode_dir: task.dir, previous_state: task.state, user_message: input.text };
+      const request = {
+        task_id: task.id, run_id: run.id, episode_dir: task.dir, previous_state: task.state,
+        committed_revisions: this.store.committedRevisions(task.id), user_message: input.text,
+      };
       await writeFile(join(handoff, 'request.json'), JSON.stringify(request, null, 2) + '\n', { flag: 'wx' });
       if (manual) {
         stage = 'handoff';
@@ -256,9 +268,19 @@ export class Bridge {
       }
       if (controller.signal.aborted) throw new Error('Đã hủy');
       stage = 'handoff';
-      this.trace.add('Đang kiểm tra bộ ảnh trước khi gửi');
+      this.trace.add('Đang kiểm tra kết quả');
       const result = await collect(task, run, this.stateDir, Boolean(manual));
       if (controller.signal.aborted) throw new Error('Đã hủy');
+      if (result.status === 'unchanged') {
+        const committed = this.store.latestReady(task.id);
+        const files = committed ? this.store.deliveries(committed.id) : [];
+        if (committed?.revision !== result.revision || !files.length) throw new Error('Bản giữ nguyên chưa được chốt');
+        this.store.finishUnchanged(run, task);
+        await this.say([result.message.trim(), files.every(file => file.state === 'sent')
+          ? 'Ảnh đã gửi đủ. Bạn có thể dùng /files để tải lại tệp gốc.'
+          : 'Ảnh đã chốt nhưng chưa gửi đủ. Bạn dùng /resend để gửi tiếp nhé.'].filter(Boolean).join('\n\n'));
+        return;
+      }
       const revision = result.revision ?? null;
       this.store.finish(run, result.status === 'ready_for_review' ? 'ready' : 'blocked',
         result.status === 'ready_for_review' ? 'Ảnh đã được kiểm tra. Mình đang gửi cho bạn.' : result.message, revision, result.files);
@@ -290,8 +312,7 @@ export class Bridge {
       this.trace.add(controller.signal.aborted ? 'Lượt đã dừng; giữ dữ liệu' : reason);
       this.store.holdInputs();
       if (run.revision) {
-        this.store.finish(run, 'ready', 'Đã tạm dừng gửi ảnh. Dùng /resend để gửi tiếp.', run.revision);
-        if (controller.signal.reason === 'user') this.store.taskState(task.id, 'cancelled', 'Đã dừng gửi. Ảnh đã lưu vẫn còn.');
+        this.deliveryStopped(run, controller.signal);
       } else {
         this.store.finish(run, controller.signal.aborted ? 'cancelled' : 'interrupted',
           controller.signal.aborted ? 'Đã dừng. Phần đã làm vẫn được giữ lại.' : `Chưa làm xong. Nguyên nhân: ${reason}`);
@@ -311,8 +332,7 @@ export class Bridge {
     this.active = active;
     active.promise = this.deliver(run.id, controller.signal).finally(async () => {
       if (controller.signal.aborted) {
-        this.store.finish(run, 'ready', 'Đã tạm dừng gửi ảnh. Dùng /resend để gửi tiếp.', run.revision);
-        if (controller.signal.reason === 'user') this.store.taskState(task.id, 'cancelled', 'Đã dừng gửi. Ảnh đã lưu vẫn còn.');
+        this.deliveryStopped(run, controller.signal);
       } else {
         this.deliveryPhase(task, run);
         await this.retainLatest(task);
@@ -328,10 +348,17 @@ export class Bridge {
       if (result.removed) this.trace.add('Đã dọn bản cũ/draft; giữ bản mới nhất đã gửi đủ');
     } catch { console.error('Chưa dọn được dữ liệu cũ; giữ file để tránh mất dữ liệu.'); }
   }
+  deliveryStopped(run: Run, signal: AbortSignal) {
+    if (this.store.latestWork(run.task)?.id !== run.id) return;
+    if (signal.reason === 'user') this.store.taskState(run.task, 'cancelled', 'Đã dừng gửi. Ảnh đã lưu vẫn còn.');
+    else this.store.taskState(run.task, 'idle', 'Đã tạm dừng gửi ảnh. Dùng /resend để gửi tiếp.');
+  }
   deliveryPhase(task: Task, run: Run) {
     const complete = this.store.deliveries(run.id).every(file => file.state === 'sent');
-    this.store.taskState(task.id, task.state === 'closed' ? 'closed' : 'idle',
-      complete ? 'Mình đã gửi đủ ảnh. Bạn có thể xem hoặc dùng /files để tải ảnh gốc.' : 'Chưa gửi đủ ảnh. Dùng /resend để gửi tiếp.');
+    if (this.store.latestWork(run.task)?.id === run.id) {
+      this.store.taskState(task.id, task.state === 'closed' ? 'closed' : 'idle',
+        complete ? 'Mình đã gửi đủ ảnh. Bạn có thể xem hoặc dùng /files để tải ảnh gốc.' : 'Chưa gửi đủ ảnh. Dùng /resend để gửi tiếp.');
+    }
     return complete;
   }
   async deliver(run: string, signal: AbortSignal) {

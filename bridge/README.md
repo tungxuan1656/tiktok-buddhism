@@ -89,6 +89,7 @@ không tự giảm chất lượng hoặc âm thầm chuyển sang tệp.
 | `/done` | Kết thúc tập hiện tại; tập tiếp theo dùng session Pi mới |
 | `/new` | Tạm cất tập hiện tại (chưa kết thúc), mở session mới cho tập tiếp theo |
 | `/episodes` | Liệt kê tập chưa kết thúc; bấm nút để chọn lại đúng session của tập. Dùng `/episodes 2` để xem trang 2 nếu có |
+| `/reopen` | Liệt kê tập đã `/done`; bấm nút để mở lại cùng thư mục, ảnh và kịch bản bằng session Pi mới. Dùng `/reopen 2` để xem trang 2 nếu có |
 | `/files` | Gửi toàn bộ tệp JPEG/PNG đã chốt của revision đã chốt mới nhất trong tập hiện tại; đợi lượt đang chạy/gửi xong trước |
 | `/resend` | Gửi lại phần chưa nhận, hoặc bàn giao bản thủ công đã có biên bản hợp lệ; không gọi Pi |
 
@@ -98,9 +99,14 @@ không tự giảm chất lượng hoặc âm thầm chuyển sang tệp.
 và bấm nút để chuyển tập; thao tác này không gọi GPT hay tự chạy lại yêu cầu.
 Sau khi chọn, nhắn để làm tiếp hoặc `/done` để kết thúc. Ảnh còn chờ khi
 chuyển tập được giữ lại; dùng `/resend` để gửi tiếp. Nếu đang chạy/gửi,
-bridge không cho đổi hay đóng tập. Các nút cũ của tập đã `/done` không mở lại
-được. Ảnh và lịch sử vẫn giữ. Không tách lại transcript của các tập cũ từng
-được lưu chung session.
+bridge không cho đổi hay đóng tập. Các nút cũ từ `/episodes` không mở tập đã
+`/done`; dùng `/reopen` và chọn tập. Lệnh này không gọi Pi, không phát lại
+yêu cầu cũ hay tự gửi ảnh. Sau khi chọn, gửi lại toàn bộ văn bản và nguồn:
+Pi đối chiếu với kịch bản và ảnh trong thư mục cũ, giữ phần đã kiểm tra còn
+khớp và chỉ làm nốt phần thiếu hoặc thay đổi. Bản đã hoàn chỉnh nhưng chưa
+được bridge chốt có thể bàn giao mà không vẽ lại; nếu bridge đã chốt và nội
+dung không đổi, dùng `/resend` nếu còn thiếu ảnh hoặc `/files` để tải tệp gốc.
+Transcript cũ vẫn được giữ, không nạp vào session mới.
 
 Tin bổ sung lúc đang bận được lưu SQLite và xử lý tuần tự **sau lượt hiện tại**,
 không chen vào prompt đang chạy. Muốn đổi hướng ngay: `/cancel`, đợi xác nhận,
@@ -242,9 +248,10 @@ nhóm đang bay nếu nhận được, nhưng không gửi nhóm tiếp theo.
 
 `/files` chủ động mở lại bàn giao cho revision đã chốt mới nhất: đặt lại trạng
 thái gửi của revision đó và chọn document, không đổi ảnh/hash hay gọi Pi. Nếu
-bị gián đoạn, `/resend` tiếp tục dạng tệp, không tự quay về ảnh nén. Revision mới
-vẫn mặc định album; run cũ trước khi nâng cấp giữ kiểu document để tiếp tục an
-toàn. Không tạo lại ảnh để sửa lỗi bàn giao.
+bị gián đoạn, `/resend` tiếp tục dạng tệp, không tự quay về ảnh nén. Gửi lại
+bản cũ không thay đổi trạng thái của lượt làm mới hơn. Revision mới vẫn mặc
+định album; run cũ trước khi nâng cấp giữ kiểu document để tiếp tục an toàn.
+Không tạo lại ảnh để sửa lỗi bàn giao.
 
 ## Kiểm tra và giới hạn
 

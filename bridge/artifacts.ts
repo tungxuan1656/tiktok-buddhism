@@ -60,7 +60,7 @@ export async function imageBytes(path: string): Promise<Uint8Array> {
   return bytes;
 }
 
-export type Result = { status: 'ready_for_review' | 'blocked' | 'needs_input'; message: string; revision?: string; files: Omit<Delivery, 'state' | 'message'>[] };
+export type Result = { status: 'ready_for_review' | 'unchanged' | 'blocked' | 'needs_input'; message: string; revision?: string; files: Omit<Delivery, 'state' | 'message'>[] };
 
 export async function collect(task: Task, run: Run, stateDir: string, manual = false): Promise<Result> {
   const report = await json(task.dir, `handoff/${run.id}/result.json`);
@@ -68,6 +68,9 @@ export async function collect(task: Task, run: Run, stateDir: string, manual = f
   if (typeof report.message !== 'string' || report.message.length > 2000) throw new Error('Thiếu lời nhắn kết quả hợp lệ');
   if (report.status === 'blocked' || report.status === 'needs_input') {
     return { status: report.status, message: report.message, files: [] };
+  }
+  if (!manual && report.status === 'unchanged' && report.checked === true && typeof report.revision === 'string' && /^r\d{2,}$/.test(report.revision)) {
+    return { status: 'unchanged', message: report.message, revision: report.revision, files: [] };
   }
   if (report.status !== 'ready_for_review' || report.checked !== true || !/^r\d{2,}$/.test(report.revision)) {
     throw new Error('Kết quả chưa có xác nhận kiểm tra thị giác hoặc revision hợp lệ');

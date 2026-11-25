@@ -95,6 +95,27 @@ export class Store {
       }
     });
   }
+  finishUnchanged(run: Run, previous: Task) {
+    this.transaction(() => {
+      this.db.prepare("UPDATE runs SET state='unchanged' WHERE id=?").run(run.id);
+      this.inputState(run.input, 'done');
+      this.taskState(run.task, previous.state, previous.phase);
+    });
+  }
+  latestWork(task: string): Run | undefined {
+    return this.db.prepare("SELECT * FROM runs WHERE task=? AND state!='unchanged' ORDER BY rowid DESC LIMIT 1").get(task) as Run | undefined;
+  }
+  latestReady(task: string): Run | undefined {
+    return this.db.prepare("SELECT * FROM runs WHERE task=? AND state='ready' AND revision IS NOT NULL ORDER BY rowid DESC LIMIT 1").get(task) as Run | undefined;
+  }
+  committedRevisions(task: string) {
+    return this.db.prepare(`SELECT revision, CASE
+      WHEN state!='ready' THEN 'unavailable'
+      WHEN EXISTS (SELECT 1 FROM deliveries WHERE run=runs.id)
+        AND NOT EXISTS (SELECT 1 FROM deliveries WHERE run=runs.id AND state!='sent') THEN 'sent'
+      ELSE 'unsent' END AS delivery
+      FROM runs WHERE task=? AND revision IS NOT NULL ORDER BY rowid`).all(task) as { revision: string; delivery: 'sent' | 'unsent' | 'unavailable' }[];
+  }
   deliveries(run?: string): Delivery[] {
     return this.db.prepare('SELECT * FROM deliveries WHERE (? IS NULL OR run=?) ORDER BY rowid').all(run ?? null, run ?? null) as Delivery[];
   }
@@ -122,17 +143,23 @@ export class Store {
       return interrupted.length > 0;
     });
   }
-  unfinished(offset: number, limit: number): (Task & { title: string | null })[] {
+  listTasks(offset: number, limit: number, closed = false): (Task & { title: string | null })[] {
     return this.db.prepare(`SELECT tasks.*, (SELECT inbox.text FROM runs JOIN inbox ON inbox.id=runs.input
       WHERE runs.task=tasks.id ORDER BY runs.rowid LIMIT 1) AS title
-      FROM tasks WHERE state!='closed' ORDER BY tasks.rowid DESC LIMIT ? OFFSET ?`).all(limit, offset) as (Task & { title: string | null })[];
+      FROM tasks WHERE (state='closed')=? ORDER BY tasks.rowid DESC LIMIT ? OFFSET ?`).all(Number(closed), limit, offset) as (Task & { title: string | null })[];
   }
-  activateTask(id: string): Task | undefined {
-    const task = this.db.prepare("SELECT * FROM tasks WHERE id=? AND state!='closed'").get(id) as Task | undefined;
-    if (task) {
-      this.set('task', task.id);
-      this.set('session', task.session);
+  activateTask(id: string, reopen = false): Task | undefined {
+    const task = this.db.prepare("SELECT * FROM tasks WHERE id=? AND (state='closed')=?").get(id, Number(reopen)) as Task | undefined;
+    if (!task) return;
+    if (reopen) {
+      const latest = this.latestWork(id);
+      task.session = randomUUID();
+      task.state = latest?.state === 'ready' ? 'idle' : 'needs_attention';
+      task.phase = 'Đã mở lại bằng session mới; giữ phần đã làm.';
+      this.db.prepare('UPDATE tasks SET session=?,state=?,phase=? WHERE id=?').run(task.session, task.state, task.phase, id);
     }
+    this.set('task', task.id);
+    this.set('session', task.session);
     return task;
   }
   leaveTask(close: boolean) {

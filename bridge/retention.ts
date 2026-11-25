@@ -63,7 +63,8 @@ async function sourceDependencies(base: string): Promise<string[]> {
 export async function pruneTask(store: Store, task: Task, stateDir: string, apply = true) {
   const skipped = (reason: string) => ({ removed: 0, skipped: reason });
   const runs = store.db.prepare('SELECT * FROM runs WHERE task=? ORDER BY rowid DESC').all(task.id) as Run[];
-  const keep = runs[0];
+  const newestWork = runs.findIndex(run => run.state !== 'unchanged');
+  const keep = runs[newestWork];
   const files = keep ? store.deliveries(keep.id) : [];
   if (!['idle', 'closed'].includes(task.state) || keep?.state !== 'ready' || !keep.revision || !files.length || files.some(file => file.state !== 'sent')) return skipped('unfinished');
   if (!/^r\d{2,}$/.test(keep.revision) || !await directory(task.dir) || !await directory(stateDir)) return skipped('unsafe_path');
@@ -91,7 +92,7 @@ export async function pruneTask(store: Store, task: Task, stateDir: string, appl
     const path = join(base, name);
     if (await directory(path)) targets.push(path);
   }
-  const older = runs.slice(1);
+  const older = runs.slice(newestWork + 1);
   for (const run of older) {
     if (!/^[a-f0-9-]{36}$/.test(run.id)) return skipped('unsafe_run');
     for (const parent of [join(base, 'handoff'), join(state, 'outbox')]) {
