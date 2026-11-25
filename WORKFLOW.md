@@ -116,9 +116,9 @@ nội dung, không bắt buộc tỷ lệ vùng chữ/tranh hoặc vị trí tr�
 - **Kiểm tra mẫu trước, vẽ theo lô sau**:
   1. Chạy `node scripts/episode-tools.mjs validate EPISODE_DIR` (lưu ý với tập `verbatim` có bìa/lời bình, gắn rõ `role` `cover`/`quote`/`commentary`/`closing` hoặc `source.exact_join_first_slide`). Các lệnh `build-prompts`, `draw-image.mjs` và `finalize` đều tự chạy lại cổng kiểm tra chung này.
   2. Chạy `node scripts/episode-tools.mjs build-prompts EPISODE_DIR --revision r01` để tự động sinh `prompts/001-r01.txt`… và `prompts/batch-r01.json` gắn fingerprint. Nếu sửa `episode.json` sau khi build, bắt buộc chạy lại với `--force` (hoặc `--override` nếu chỉ sửa tay prompt mà nội dung kịch bản không đổi).
-  3. Vẽ và mở kiểm tra **slide 1 trước** vào đúng `drafts/001-r01-a1` (khớp `batch-r01.json`: `node scripts/draw-image.mjs --slide EPISODE_JSON 1 prompts/001-r01.txt drafts/001-r01-a1 ...`) để chốt phong cách, kiểu chữ và nhân vật.
+  3. Vẽ và mở kiểm tra **slide 1 trước** vào đúng `drafts/001-r01-a1` (khớp `batch-r01.json`, kể cả thứ tự ảnh phong cách và mẫu nhân vật; xem [lệnh mẫu](references/painter-local-api.md#một-lệnh-cho-mỗi-lượt-tạosửa)) để chốt phong cách, kiểu chữ và nhân vật.
   4. Khi slide 1 đạt, chạy `node scripts/draw-image.mjs --batch EPISODE_JSON prompts/batch-r01.json` (script chỉ bỏ qua draft đã `succeeded` khớp fingerprint `request_sha256` và SHA-256 ảnh; chặn trùng slide và dừng ngay nếu gặp `unknown`/`in_flight`).
-  5. Khi gặp attempt `unknown`/`in_flight`, chỉ sau khi đối soát server/response mới được chạy `node scripts/draw-image.mjs --reconcile DRAFT_DIR --resolution reconciled_failed|reconciled_superseded --note "..."` (hoặc `--normalize` nếu đã có `response.bin`) rồi mới tạo attempt mới.
+  5. Với attempt `unknown`/`in_flight`, dừng và đối soát server trước khi chạy `node scripts/draw-image.mjs --reconcile DRAFT_DIR --resolution reconciled_failed|reconciled_superseded --note "..."`. Nếu status là `received`/`normalize_failed` và có hash của response, dùng `node scripts/draw-image.mjs --normalize DRAFT_DIR/response.bin` để phục hồi attempt gốc, không vẽ lại.
   6. Khi cần xem tiến độ hoặc tiếp tục tập bị ngắt, chạy `node scripts/episode-tools.mjs status EPISODE_DIR`.
 - Lưu request, prompt, phản hồi gốc, MIME/kích thước thật và ảnh vào drafts.
   Điền đường dẫn ảnh vào `image` trong episode.json. Không để AI tự sửa chữ để vừa bố cục.
@@ -159,7 +159,15 @@ trong một lệnh bash):
 
 ```bash
 node scripts/export-slide.mjs --checked DRAFT_IMAGE OUTPUT_IMAGE "ghi chú kiểm tra"
+# Mang nguyên ảnh đã kiểm tra của trang không đổi sang revision mới:
+node scripts/export-slide.mjs --checked --carry-forward EPISODE_DIR/output/r01/001.jpg EPISODE_DIR/output/r02/001.jpg "Giữ nguyên từ r01"
 ```
+
+Ảnh cũ chưa từng có checkpoint gắn với kịch bản: mở lại và đối chiếu đầy đủ với kịch bản và
+mẫu hiện hành, rồi dùng `--checked --import-legacy` thay cho `--carry-forward`
+trong lệnh trên. Cần snapshot gốc trỏ đúng ảnh và trang không đổi. Biên bản
+ghi nguồn cũ, không giả lập request hash. Các revision sau dùng lại biên bản
+này như bình thường khi ảnh và kịch bản còn khớp.
 
 Sau khi xuất đủ các trang của revision, chạy:
 

@@ -16,7 +16,8 @@ export const MAX_IMAGE_BYTES = 49_000_000;
 export const MAX_TOTAL_REF_BYTES = 64 * 1024 * 1024;
 export const MAX_PROMPT_BYTES = 64 * 1024;
 export const MAX_EPISODE_JSON_BYTES = 128 * 1024;
-export const MAX_ATTEMPTS_PER_SLIDE = 5;
+export const MAX_SOURCE_BYTES = 512 * 1024;
+export const MAX_ATTEMPTS_PER_SLIDE = 3;
 
 export const OUTPUT_WIDTH = 1080;
 export const OUTPUT_HEIGHT = 1440;

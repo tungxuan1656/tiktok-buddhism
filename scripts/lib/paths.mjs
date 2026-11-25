@@ -1,4 +1,4 @@
-import { lstat, mkdir, realpath, rename, stat, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export const isSafeId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value);
@@ -11,6 +11,40 @@ export async function writeAtomic(target, content, mode = 0o644) {
   const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(tmp, content, { encoding: 'utf8', mode });
   await rename(tmp, target);
+}
+
+/**
+ * Publish bytes atomically using a temporary file and hard link without overwriting
+ * an existing distinct file. Returns 'exported' or 'reused'.
+ */
+export async function publishExclusive(output, bytes, mismatch, mode = 0o600) {
+  const alreadyExported = async () => {
+    const existing = await lstat(output).catch(error => {
+      if (error.code !== 'ENOENT') throw error;
+    });
+    if (!existing) return false;
+    if (existing.isSymbolicLink() || !existing.isFile() || existing.size !== bytes.length || !(await readFile(output)).equals(bytes)) {
+      throw new Error(mismatch);
+    }
+    return true;
+  };
+
+  if (await alreadyExported()) return 'reused';
+  const dir = dirname(output);
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const tempDir = await mkdtemp(join(dir, '.pub-'));
+  try {
+    const temp = join(tempDir, 'payload');
+    await writeFile(temp, bytes, { mode });
+    try { await link(temp, output); }
+    catch (error) {
+      if (error.code === 'EEXIST' && await alreadyExported()) return 'reused';
+      throw error;
+    }
+    return 'exported';
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 }
 
 /** Check lexical containment of a relative path within baseDir without hitting disk. */

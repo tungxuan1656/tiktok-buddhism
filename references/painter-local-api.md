@@ -39,13 +39,17 @@ không tự mua gói/tài khoản. Không mở cổng Internet hoặc đổi URL
    [character](../prompts/character.md) hoặc [illustration](../prompts/illustration.md).
 2. Mở các ảnh mẫu thật; ghi thứ tự → ID/version/vai trò trong prompt và notes.
    Nhân vật có sẵn phải dùng snapshot đã chốt, không chỉ gửi đường dẫn/ID.
-3. Từ gốc repo, chọn **thư mục draft chưa tồn tại**. Thời hạn tool dài hơn
-   300 giây để còn xử lý ảnh sau HTTP. Thay đường dẫn ví dụ bằng dữ liệu thật:
+3. Từ gốc repo, chọn **thư mục draft chưa tồn tại**. Với slide, chạy
+   `build-prompts` để tạo prompt, `.meta.json` và manifest; dùng đúng danh sách
+   ảnh trong manifest theo thứ tự. Thời hạn tool phải dài hơn 300 giây.
+   Ví dụ (tập có một ảnh mẫu nhân vật):
 
 ```bash
+node scripts/episode-tools.mjs build-prompts 'episodes/TEN-TAP' --revision r01
 node scripts/draw-image.mjs --slide 'episodes/TEN-TAP/episode.json' 1 \
   'episodes/TEN-TAP/prompts/001-r01.txt' \
-  'episodes/TEN-TAP/drafts/001-r01' \
+  'episodes/TEN-TAP/drafts/001-r01-a1' \
+  'references/user-style-v1/example-01-original.png' \
   'episodes/TEN-TAP/references/PHAT_01/v1/reference.jpg'
 ```
 
@@ -58,11 +62,13 @@ chế độ vẽ đều đọc JSON, kiểm tra 1-35 slide và text trước POS
 `--batch` còn kiểm tra số trang có trong kịch bản. CLI cũ không có JSON bị từ chối.
 `--normalize` chỉ xử lý response đã có nên không yêu cầu kịch bản.
 
-Các đối số sau thư mục draft là ảnh tham chiếu, đúng thứ tự. Có thể không có
-ảnh mẫu khi thiết kế mới/cảnh không cần; thường dùng
-`references/user-style-v1/example-01-original.png` làm **ảnh phong cách**, không
-phải định danh mọi nhân vật. Mọi lần sửa vẫn gửi lại mẫu thật và toàn bộ text
-đúng; không gửi cả nguồn kinh khi chỉ cần in một trang.
+Slide bắt buộc có ảnh phong cách ở vị trí đầu và đúng các ảnh mẫu nhân vật
+trong manifest (nếu có). Có thể thêm ảnh nháp làm tham chiếu sửa ở cuối và
+mô tả vai trò của nó trong prompt. Khi sửa tay prompt, chạy `build-prompts
+--override` để ghi nhận thay đổi. Chỉ thêm `--allow-repeat` ở cuối lệnh
+`--slide` nếu đã xem ảnh cũ và thực sự cần gửi lại **cùng** request đã thành
+công; cờ này không bỏ giới hạn lượt hoặc cho retry request chưa rõ kết quả.
+Không gửi cả nguồn kinh khi chỉ cần in một trang.
 
 Script tự tạo thư mục độc quyền, lưu request/reference metadata, gọi **một**
 POST rồi xử lý ảnh. Nếu thư mục đã có thì từ chối trước API; không xóa thư mục
@@ -89,7 +95,10 @@ Mở `image.jpg` để đối chiếu từng dòng/từ/dấu với `text` trong
 mặt/y phục/cảnh/bố cục (với mẫu nhân vật, slide 1 hoặc lượt sửa thì mở ngay;
 khi vẽ lô bằng `--batch`, đọc gộp 5–6 ảnh/lượt sau khi xong lô). Không đoán
 chữ nhỏ, không coi OCR là chứng cứ tuyệt đối. Sai thì lưu lý do, tạo lượt sửa
-mới bằng cùng script/references; tối đa hai lần sửa/trang. Không sửa
+mới bằng cùng script/references; tối đa 3 lần gọi API cho mỗi trang trong một
+revision (1 lượt đầu + tối đa 2 lượt sửa; mọi HTTP rejection, timeout hay
+normalize failure đã gửi request đều tính vào giới hạn 3 lượt này, riêng
+`--normalize` cục bộ không gọi API nên không tính thêm). Không sửa
 nguồn/kịch bản để hợp thức hóa chữ sai. Lưu kết quả kiểm tra ngay sau khi đối chiếu.
 
 Wrapper đã tạo đúng 1080 × 1440; **không mã hóa JPEG lại khi xuất**. Dùng bước
@@ -97,7 +106,7 @@ cục bộ này cho ảnh đã kiểm tra, không gọi API và không dùng `cp
 
 ```bash
 node scripts/export-slide.mjs \
-  'episodes/TEN-TAP/drafts/001-r01/image.jpg' \
+  'episodes/TEN-TAP/drafts/001-r01-a1/image.jpg' \
   'episodes/TEN-TAP/output/r01/001.jpg'
 ```
 
@@ -124,19 +133,20 @@ WORKFLOW. Giữ dữ liệu lỗi/unknown và mọi file còn là nguồn/nhân 
   nối, HTTP 5xx/408); dừng, kiểm tra server trước khi gửi lại. Wrapper chặn tạo
   attempt mới cho cùng slide khi còn `unknown`/`in_flight`; chỉ sau khi đối soát
   xong mới chạy `node scripts/draw-image.mjs --reconcile DRAFT_DIR --resolution reconciled_failed|reconciled_superseded --note "..."`. Không tự retry.
-- `normalize_failed`/`received`: response đã lưu nhưng chuyển đổi chưa xong;
-  sửa vấn đề cục bộ rồi xử lý **file đã có**, không gọi lại API:
+- `normalize_failed`/`received`: nếu `status.json` có SHA-256 của response,
+  sửa vấn đề cục bộ rồi phục hồi **chính attempt gốc**, không gọi lại API:
 
 ```bash
 node scripts/draw-image.mjs --normalize \
-  'episodes/TEN-TAP/drafts/001-r01/response.bin' \
-  'episodes/TEN-TAP/drafts/001-r01-local-fix'
+  'episodes/TEN-TAP/drafts/001-r01-a1/response.bin'
 ```
 
-Chế độ `--normalize` cũng dùng thư mục mới và giữ bản nguồn, không gọi mạng.
-Ảnh cũ chỉ được chuyển đổi khi công việc thật cần và phải lưu thành bản mới;
-không tự nén lại toàn kho. Thiếu `magick` thì báo môi trường, không bỏ qua
-wrapper/cài renderer ngầm. Không tìm/in/lưu khóa, raw lỗi không gửi vào Telegram.
+Chỉ phục hồi khi hash của raw còn khớp. Nếu không có hash hoặc trạng thái
+chưa xác định, giữ nguyên bằng chứng và đối soát server trước. Tập đang có
+lượt xử lý sẽ từ chối reconcile hoặc normalize đồng thời. `--normalize
+FILE NEW_DRAFT_DIR` chỉ chuyển ảnh rời, không gọi mạng và không cấp provenance
+cho `export-slide --checked`. Không tự nén lại kho ảnh. Thiếu `magick` thì báo
+môi trường; không tìm/in/lưu khóa, raw lỗi không gửi vào Telegram.
 
 ## Bằng chứng và giới hạn
 

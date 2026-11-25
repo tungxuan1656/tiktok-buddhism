@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { computeSlideFingerprint, sha256Bytes } from './fingerprint.mjs';
@@ -10,11 +10,13 @@ import {
   isSafeVersion,
 } from './paths.mjs';
 import {
+  CHECKPOINT_SCHEMA_VERSION,
   INTERNAL_PATTERNS,
   MAX_EPISODE_JSON_BYTES,
   MAX_IMAGE_BYTES,
   MAX_REFS,
   MAX_SLIDES,
+  MAX_SOURCE_BYTES,
   MAX_TOTAL_REF_BYTES,
   MIN_SLIDES,
   OUTPUT_HEIGHT,
@@ -34,9 +36,11 @@ export function imageMime(bytes) {
   throw new Error('Expected a PNG or JPEG image');
 }
 
-export async function readImageInfo(path, { requireNormalized1080 = false, includeBytes = false } = {}) {
+export async function readImageInfo(path, { requireNormalized1080 = false, includeBytes = false, maxBytes = MAX_IMAGE_BYTES } = {}) {
+  const st = await stat(path);
+  if (!st.isFile() || st.size <= 0 || st.size > maxBytes) throw new Error('Invalid image size');
   const bytes = await readFile(path);
-  if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw new Error('Invalid image size');
+  if (!bytes.length || bytes.length > maxBytes) throw new Error('Invalid image size');
   const mime = imageMime(bytes);
   const { stdout } = await exec('magick', ['identify', '-regard-warnings', '-format', '%m %w %h %n', path], { timeout: 30_000 });
   const match = /^(PNG|JPEG) (\d+) (\d+) 1$/.exec(stdout);
@@ -49,6 +53,23 @@ export async function readImageInfo(path, { requireNormalized1080 = false, inclu
   const info = { mime, width, height, bytes: bytes.length, sha256: sha256Bytes(bytes) };
   if (includeBytes) info.buffer = bytes;
   return info;
+}
+
+export const isSha256 = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+
+export function checkpointIssue(check, { revision, slide, image, imageSha256, slideSha256 }) {
+  if (check?.schema_version !== CHECKPOINT_SCHEMA_VERSION) return `Outdated or unbound check checkpoint schema for slide ${slide}; re-export with --checked`;
+  if (check.revision !== revision || check.slide !== slide || check.image !== image) return `Check checkpoint mismatch for slide ${slide}`;
+  const legacy = check.legacy_import;
+  if (legacy ? check.request_sha256 !== null || !/^r\d{2,}$/.test(legacy.revision) || !isSha256(legacy.snapshot_sha256) : !isSha256(check.request_sha256)) {
+    return `Check checkpoint for slide ${slide} is missing valid request_sha256 or legacy provenance`;
+  }
+  if (check.visual_check?.passed !== true || typeof check.visual_check.note !== 'string' || !check.visual_check.note.trim()) {
+    return `Invalid or unpassed visual_check in checkpoint for slide ${slide}`;
+  }
+  if (!imageSha256 || check.sha256 !== imageSha256 || check.image_sha256 !== imageSha256) return `SHA-256 mismatch for slide ${slide} (${image})`;
+  if (!slideSha256 || check.slide_content_sha256 !== slideSha256) return `Stale visual check for slide ${slide}: episode content or character snapshot changed after visual check`;
+  return null;
 }
 
 export async function readEpisodeJson(episodeFile, episodeDir) {
@@ -104,7 +125,7 @@ export async function loadCharacterSnapshot(episodeDir, ref) {
 function exactJoinMatches(seq, srcTrimmed, prefixes) {
   if (!seq.length) return false;
   if (prefixes !== undefined) {
-    if (!Array.isArray(prefixes) || prefixes.length !== seq.length || prefixes.some(p => typeof p !== 'string')) {
+    if (!Array.isArray(prefixes) || prefixes.length !== seq.length || prefixes.some(p => typeof p !== 'string' || !/^\s*$/.test(p))) {
       return false;
     }
     const joined = normalizeEol(seq.map((s, i) => `${prefixes[i]}${s?.text ?? ''}`).join('')).trim();
@@ -256,15 +277,19 @@ export async function validateEpisodeData(ep, episodeDir, { stage = 'build', inc
     } else {
       try {
         const checked = await confineRelativeFile(dir, rel);
-        const srcBytes = await readFile(checked.real);
-        sourceSha256 = sha256Bytes(srcBytes);
-        const sourceMeta = ep.source && typeof ep.source === 'object' ? ep.source : undefined;
-        if (typeof sourceMeta?.sha256 === 'string' && sourceMeta.sha256 !== sourceSha256) {
-          issues.push(`Source SHA-256 mismatch for ${rel}`);
-        }
-        if (Array.isArray(ep.slides)) {
-          const errMsg = verifyVerbatim(ep.slides, srcBytes.toString('utf8'), sourceMeta);
-          if (errMsg) issues.push(`${errMsg} (${rel})`);
+        if (checked.stat.size > MAX_SOURCE_BYTES) {
+          issues.push(`Source file exceeds ${MAX_SOURCE_BYTES} bytes limit: ${rel}`);
+        } else {
+          const srcBytes = await readFile(checked.real);
+          sourceSha256 = sha256Bytes(srcBytes);
+          const sourceMeta = ep.source && typeof ep.source === 'object' ? ep.source : undefined;
+          if (typeof sourceMeta?.sha256 === 'string' && sourceMeta.sha256 !== sourceSha256) {
+            issues.push(`Source SHA-256 mismatch for ${rel}`);
+          }
+          if (Array.isArray(ep.slides)) {
+            const errMsg = verifyVerbatim(ep.slides, srcBytes.toString('utf8'), sourceMeta);
+            if (errMsg) issues.push(`${errMsg} (${rel})`);
+          }
         }
       } catch (err) {
         issues.push(`Mode verbatim requires confined regular file ${rel}: ${err.message}`);

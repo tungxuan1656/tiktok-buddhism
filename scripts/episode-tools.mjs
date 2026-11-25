@@ -1,6 +1,6 @@
 import { lstat, mkdir, readFile, readdir } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import {
   computePromptInputFingerprint,
@@ -8,22 +8,24 @@ import {
   normalizeObjectsValue,
   sha256Bytes,
 } from './lib/fingerprint.mjs';
+import { withEpisodeLock } from './lib/lock.mjs';
 import {
   confineExistingPath,
   confineRelativeFile,
   confineTargetPath,
   isSafeAttempt,
   isSafeRevision,
+  publishExclusive,
   writeAtomic,
 } from './lib/paths.mjs';
 import {
-  CHECKPOINT_SCHEMA_VERSION,
   DEFAULT_STYLE_REL,
   MAX_REFS,
+  MAX_EPISODE_JSON_BYTES,
   REPO_ROOT,
   UNRESOLVED_STATES,
 } from './lib/policy.mjs';
-import { readEpisodeJson, readImageInfo, validateEpisodeData } from './lib/schema.mjs';
+import { checkpointIssue, readEpisodeJson, readImageInfo, validateEpisodeData } from './lib/schema.mjs';
 
 const pad3 = n => String(n).padStart(3, '0');
 
@@ -271,7 +273,6 @@ export async function episodeStatus(episodeDir, { revision = 'r01' } = {}) {
     : [];
 
   const slides = [];
-  const outDir = join(dir, 'output', revision);
   for (let i = 0; i < (ep.slides?.length ?? 0); i++) {
     const num = i + 1;
     const prefix = `${pad3(num)}-${revision}`;
@@ -313,19 +314,10 @@ export async function episodeStatus(episodeDir, { revision = 'r01' } = {}) {
       if (checkExists) {
         try {
           const checkedFile = await confineRelativeFile(dir, relCheck);
+          if (checkedFile.stat.size > MAX_EPISODE_JSON_BYTES) throw new Error('Checkpoint too large');
           const ck = JSON.parse(await readFile(checkedFile.real, 'utf8'));
-          const liveFp = validation.slideFingerprints[i] ?? null;
-          const hashOk = actualImgHash && ck.sha256 === actualImgHash && (ck.image_sha256 ?? ck.sha256) === actualImgHash;
-          const noteOk = typeof ck?.visual_check === 'object'
-            ? ck.visual_check?.passed === true && typeof ck.visual_check?.note === 'string' && ck.visual_check.note.trim().length > 0
-            : false;
-          if ((ck.schema_version ?? 0) < CHECKPOINT_SCHEMA_VERSION || ck.revision !== revision || ck.slide !== num || ck.image !== imgName || !noteOk) {
-            checkState = 'corrupted';
-          } else if (!hashOk || !liveFp || ck.slide_content_sha256 !== liveFp) {
-            checkState = 'stale';
-          } else {
-            checkState = 'verified';
-          }
+          const issue = checkpointIssue(ck, { revision, slide: num, image: imgName, imageSha256: actualImgHash, slideSha256: validation.slideFingerprints[i] });
+          checkState = !issue ? 'verified' : /^(Stale visual check|SHA-256 mismatch)/.test(issue) ? 'stale' : 'corrupted';
         } catch {
           checkState = 'corrupted';
         }
@@ -350,89 +342,79 @@ export async function episodeStatus(episodeDir, { revision = 'r01' } = {}) {
 export async function finalizeEpisode(episodeDir, { revision = 'r01' } = {}) {
   if (!isSafeRevision(revision)) throw new Error(`Invalid revision "${revision}" (expected r01, r02...)`);
   const dir = resolve(episodeDir);
-  const epPath = join(dir, 'episode.json');
-  const ep = await readEpisodeJson(epPath, dir);
-  const validation = await validateEpisodeData(ep, dir, { stage: 'finalize' });
-  if (!validation.ok) {
-    throw new Error(`Episode validation failed before finalize:\n- ${validation.issues.join('\n- ')}`);
-  }
-  if (ep.status === 'approved' && ep.revision === revision) {
-    throw new Error(`Revision ${revision} is already approved and cannot be re-finalized`);
-  }
+  return withEpisodeLock(dir, async () => {
+    const epPath = join(dir, 'episode.json');
+    const ep = await readEpisodeJson(epPath, dir);
+    const validation = await validateEpisodeData(ep, dir, { stage: 'finalize' });
+    if (!validation.ok) {
+      throw new Error(`Episode validation failed before finalize:\n- ${validation.issues.join('\n- ')}`);
+    }
+    if (isSafeRevision(ep.revision) && BigInt(ep.revision.slice(1)) > BigInt(revision.slice(1))) {
+      throw new Error(`Cannot finalize older revision ${revision}; current revision is ${ep.revision}`);
+    }
+    if (ep.status === 'approved' && ep.revision === revision) {
+      throw new Error(`Revision ${revision} is already approved and cannot be re-finalized`);
+    }
 
-  const outRelDir = join('output', revision);
-  await confineTargetPath(dir, outRelDir);
-  const files = [];
+    const outRelDir = join('output', revision);
+    await confineTargetPath(dir, outRelDir);
+    const files = [];
 
-  for (let i = 0; i < ep.slides.length; i++) {
-    const num = i + 1;
-    const base = pad3(num);
-    let imgName;
-    let checkedImg;
-    for (const ext of ['.jpg', '.jpeg', '.png']) {
-      const relCandidate = join(outRelDir, `${base}${ext}`);
-      const candidateExists = await lstat(join(dir, relCandidate)).then(() => true, () => false);
-      if (candidateExists) {
-        checkedImg = await confineRelativeFile(dir, relCandidate);
-        imgName = `${base}${ext}`;
-        break;
+    for (let i = 0; i < ep.slides.length; i++) {
+      const num = i + 1;
+      const base = pad3(num);
+      let imgName;
+      let checkedImg;
+      for (const ext of ['.jpg', '.jpeg', '.png']) {
+        const relCandidate = join(outRelDir, `${base}${ext}`);
+        const candidateExists = await lstat(join(dir, relCandidate)).then(() => true, () => false);
+        if (candidateExists) {
+          checkedImg = await confineRelativeFile(dir, relCandidate);
+          imgName = `${base}${ext}`;
+          break;
+        }
       }
+      if (!imgName || !checkedImg) {
+        throw new Error(`Missing exported image for slide ${num} in output/${revision}/`);
+      }
+      const imgInfo = await readImageInfo(checkedImg.real, { requireNormalized1080: true });
+      const checkRel = join(outRelDir, 'checks', `${imgName}.json`);
+      const checkedCk = await confineRelativeFile(dir, checkRel).catch(() => null);
+      if (!checkedCk) {
+        throw new Error(`Missing check checkpoint for slide ${num}: output/${revision}/checks/${imgName}.json`);
+      }
+      if (checkedCk.stat.size > MAX_EPISODE_JSON_BYTES) throw new Error(`Checkpoint too large for slide ${num}`);
+      const check = JSON.parse(await readFile(checkedCk.real, 'utf8'));
+      const issue = checkpointIssue(check, { revision, slide: num, image: imgName, imageSha256: imgInfo.sha256, slideSha256: validation.slideFingerprints[i] });
+      if (issue) throw new Error(issue);
+      const relPath = `output/${revision}/${imgName}`;
+      ep.slides[i].image = relPath;
+      files.push(relPath);
     }
-    if (!imgName || !checkedImg) {
-      throw new Error(`Missing exported image for slide ${num} in output/${revision}/`);
-    }
-    const imgInfo = await readImageInfo(checkedImg.real, { requireNormalized1080: true });
-    const checkRel = join(outRelDir, 'checks', `${imgName}.json`);
-    const checkedCk = await confineRelativeFile(dir, checkRel).catch(() => null);
-    if (!checkedCk) {
-      throw new Error(`Missing check checkpoint for slide ${num}: output/${revision}/checks/${imgName}.json`);
-    }
-    const check = JSON.parse(await readFile(checkedCk.real, 'utf8'));
-    if ((check?.schema_version ?? 0) < CHECKPOINT_SCHEMA_VERSION) {
-      throw new Error(`Outdated or unbound check checkpoint schema for slide ${num}; re-export with --checked`);
-    }
-    if (check.revision !== revision || check.slide !== num || check.image !== imgName) {
-      throw new Error(`Check checkpoint mismatch for slide ${num} (expected revision=${revision}, slide=${num}, image=${imgName})`);
-    }
-    const noteOk = typeof check.visual_check === 'object' && check.visual_check !== null
-      && check.visual_check.passed === true
-      && typeof check.visual_check.note === 'string' && check.visual_check.note.trim().length > 0;
-    if (!noteOk) {
-      throw new Error(`Invalid or unpassed visual_check in checkpoint for slide ${num}`);
-    }
-    if (check.sha256 !== imgInfo.sha256 || check.image_sha256 !== imgInfo.sha256) {
-      throw new Error(`SHA-256 mismatch for slide ${num} (${imgName})`);
-    }
-    if (check.slide_content_sha256 !== validation.slideFingerprints[i]) {
-      throw new Error(`Stale visual check for slide ${num}: episode content or character snapshot changed after visual check`);
-    }
-    const relPath = `output/${revision}/${imgName}`;
-    ep.slides[i].image = relPath;
-    files.push(relPath);
-  }
 
-  ep.revision = revision;
-  ep.status = 'ready_for_review';
-  const serialized = `${JSON.stringify(ep, null, 2)}\n`;
-  const snapshotRel = join(outRelDir, 'episode.json');
-  const snapshotTarget = await confineTargetPath(dir, snapshotRel);
+    ep.revision = revision;
+    ep.status = 'ready_for_review';
+    const serialized = `${JSON.stringify(ep, null, 2)}\n`;
+    const snapshotRel = join(outRelDir, 'episode.json');
+    const snapshotTarget = await confineTargetPath(dir, snapshotRel);
 
-  const snapshotExists = await lstat(snapshotTarget).then(() => true, () => false);
-  if (snapshotExists) {
-    const existingSnap = await confineRelativeFile(dir, snapshotRel);
-    const existingRaw = await readFile(existingSnap.real, 'utf8');
-    if (existingRaw !== serialized) {
-      throw new Error(`Finalized snapshot output/${revision}/episode.json already exists with different content; create a new revision instead of overwriting`);
-    }
-    // Idempotent recovery: ensure root episode.json is also reconciled if a crash happened mid-finalize.
+    const publishState = await publishExclusive(
+      snapshotTarget,
+      Buffer.from(serialized, 'utf8'),
+      `Finalized snapshot output/${revision}/episode.json already exists with different content; create a new revision instead of overwriting`,
+      0o644,
+    );
     const currentEpRaw = await readFile(epPath, 'utf8');
     if (currentEpRaw !== serialized) await writeAtomic(epPath, serialized);
-    return { ok: true, idempotent: true, revision, status: ep.status, episodeSnapshot: snapshotTarget, files };
-  }
-
-  await writeAtomic(snapshotTarget, serialized);
-  await writeAtomic(epPath, serialized);
-  return { ok: true, revision, status: ep.status, episodeSnapshot: snapshotTarget, files };
+    return {
+      ok: true,
+      ...(publishState === 'reused' ? { idempotent: true } : {}),
+      revision,
+      status: ep.status,
+      episodeSnapshot: snapshotTarget,
+      files,
+    };
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
