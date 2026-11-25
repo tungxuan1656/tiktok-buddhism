@@ -7,7 +7,7 @@ export async function withEpisodeLock(episodeDir, fn, { timeoutMs = 10_000 } = {
   const db = new DatabaseSync(path);
   const deadline = Date.now() + timeoutMs;
   try {
-    // As in the bridge, use SQLite only for an OS-released file lock; no data is stored.
+    // SQLite provides an OS-released file lock; no data is stored.
     while (true) {
       try {
         db.exec('BEGIN EXCLUSIVE');

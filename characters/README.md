@@ -1,6 +1,6 @@
 # Kho nhân vật: JSON + ảnh thật
 
-Kho này là trí nhớ dùng lại qua các phiên Pi. JSON mô tả nhận diện; ảnh thật
+Kho này dùng lại qua các phiên agent. JSON mô tả nhận diện; ảnh thật
 mới là thứ gửi model. Không cái nào thay thế cái còn lại.
 
 ## Cấu trúc
@@ -20,8 +20,8 @@ thành phần khi thực sự cần. Dùng [mẫu JSON](../templates/character.j
 2. Với tập mới không chỉ định: chọn phiên bản số lớn nhất có trạng thái
    `user_approved`; nếu chưa có, chọn phiên bản số lớn nhất `generated`.
    Không chọn `retired`. Đừng chọn theo thứ tự chữ (`v10` phải sau `v9`).
-3. Không có mẫu: tự thiết kế theo [prompt](../prompts/character.md) bằng
-   [wrapper API](../references/painter-local-api.md), xem JPEG95 sau nén,
+3. Không có mẫu: tự thiết kế theo [hướng dẫn API ảnh](../docs/image-api.md),
+   xem JPEG95 sau nén,
    ghi ngoại hình thực, lưu `generated` rồi tiếp tục làm slide. Không chờ người
    dùng duyệt nhân vật. Ảnh mẫu không chữ, ưu tiên nhìn rõ diện mạo và trang phục.
 4. Mỗi request vẽ/sửa gửi lại ảnh thật và `identity`/`keep`. Giữ khuôn mặt,
@@ -32,7 +32,7 @@ thành phần khi thực sự cần. Dùng [mẫu JSON](../templates/character.j
 
 ## Trạng thái không phải cổng duyệt
 
-- `generated`: Pi tạo/tự kiểm tra, dùng được, chưa có duyệt của người dùng.
+- `generated`: agent tạo/tự kiểm tra, dùng được, chưa có duyệt của người dùng.
 - `user_approved`: người dùng đã thực sự xác nhận đúng mẫu này; ghi bằng
   chứng/ngày trong `review_note`. Đừng suy diễn từ việc họ duyệt một tập.
 - `retired`: không chọn cho tập mới, giữ lại để truy nguyên.

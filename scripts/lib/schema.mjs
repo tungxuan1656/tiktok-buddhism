@@ -10,7 +10,6 @@ import {
   isSafeVersion,
 } from './paths.mjs';
 import {
-  CHECKPOINT_SCHEMA_VERSION,
   INTERNAL_PATTERNS,
   MAX_EPISODE_JSON_BYTES,
   MAX_IMAGE_BYTES,
@@ -56,22 +55,6 @@ export async function readImageInfo(path, { requireNormalized1080 = false, inclu
 }
 
 export const isSha256 = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
-
-export function checkpointIssue(check, { revision, slide, image, imageSha256, slideSha256 }) {
-  if (check?.schema_version !== CHECKPOINT_SCHEMA_VERSION) return `Outdated or unbound check checkpoint schema for slide ${slide}; re-export with --checked`;
-  if (check.revision !== revision || check.slide !== slide || check.image !== image) return `Check checkpoint mismatch for slide ${slide}`;
-  const legacy = check.legacy_import;
-  if (legacy ? check.request_sha256 !== null || !/^r\d{2,}$/.test(legacy.revision) ||
-      (legacy.snapshot_sha256 === undefined ? !isSha256(legacy.rechecked_from_sha256) : !isSha256(legacy.snapshot_sha256)) : !isSha256(check.request_sha256)) {
-    return `Check checkpoint for slide ${slide} is missing valid request_sha256 or legacy provenance`;
-  }
-  if (check.visual_check?.passed !== true || typeof check.visual_check.note !== 'string' || !check.visual_check.note.trim()) {
-    return `Invalid or unpassed visual_check in checkpoint for slide ${slide}`;
-  }
-  if (!imageSha256 || check.sha256 !== imageSha256 || check.image_sha256 !== imageSha256) return `SHA-256 mismatch for slide ${slide} (${image})`;
-  if (!slideSha256 || check.slide_content_sha256 !== slideSha256) return `Stale visual check for slide ${slide}: episode content or character snapshot changed after visual check`;
-  return null;
-}
 
 export async function readEpisodeJson(episodeFile, episodeDir) {
   const { real, stat } = await confineExistingPath([episodeDir], episodeFile, { requireRegularFile: true });
@@ -196,10 +179,11 @@ function verifyVerbatim(slides, srcRawRaw, sourceMeta) {
 }
 
 /**
- * Shared episode validation and deterministic slide fingerprinting used across
- * validate, build-prompts, draw (--slide, --character, --batch), and finalize.
+ * Shared validation and page fingerprints for authoring, drawing and delivery.
  */
-export async function validateEpisodeData(ep, episodeDir, { stage = 'build', includeCharacterSnapshots = stage !== 'character' } = {}) {
+export async function validateEpisodeData(ep, episodeDir, {
+  includeCharacterSnapshots = true, legacyVerbatimIssue,
+} = {}) {
   const dir = resolve(episodeDir);
   const issues = [];
   if (!ep || typeof ep !== 'object' || Array.isArray(ep)) {
@@ -273,9 +257,7 @@ export async function validateEpisodeData(ep, episodeDir, { stage = 'build', inc
   let sourceSha256 = null;
   if (ep.mode === 'verbatim') {
     const { rel, full } = resolvePrimarySource(dir, ep);
-    if (!full) {
-      issues.push(`Invalid or escaping verbatim source path: ${rel}`);
-    } else {
+    if (full) {
       try {
         const checked = await confineRelativeFile(dir, rel);
         if (checked.stat.size > MAX_SOURCE_BYTES) {
@@ -289,17 +271,20 @@ export async function validateEpisodeData(ep, episodeDir, { stage = 'build', inc
           }
           if (Array.isArray(ep.slides)) {
             const errMsg = verifyVerbatim(ep.slides, srcBytes.toString('utf8'), sourceMeta);
-            if (errMsg) issues.push(`${errMsg} (${rel})`);
+            const issue = errMsg && `${errMsg} (${rel})`;
+            if (issue && issue !== legacyVerbatimIssue) issues.push(issue);
           }
         }
       } catch (err) {
         issues.push(`Mode verbatim requires confined regular file ${rel}: ${err.message}`);
       }
+    } else {
+      issues.push(`Invalid or escaping verbatim source path: ${rel}`);
     }
   }
 
   const slideFingerprints = issues.length === 0
-    ? slides.map((_, idx) => computeSlideFingerprint(ep, idx, resolvedCharsBySlide[idx] ?? [], sourceSha256))
+    ? slides.map((_, idx) => computeSlideFingerprint(ep, idx, resolvedCharsBySlide[idx] ?? []))
     : [];
 
   return {

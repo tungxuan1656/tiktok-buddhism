@@ -24,9 +24,6 @@ export const OUTPUT_HEIGHT = 1440;
 export const OUTPUT_QUALITY = 95;
 export const OUTPUT_SAMPLING = '4:4:4';
 
-export const PROMPT_TEMPLATE_VERSION = 2;
-export const CHECKPOINT_SCHEMA_VERSION = 2;
-
 export const VALID_MODES = ['original', 'adaptation', 'verbatim'];
 export const VALID_SCENE_TYPES = ['event', 'simile', 'concept'];
 export const VALID_SLIDE_ROLES = ['cover', 'quote', 'commentary', 'closing'];
