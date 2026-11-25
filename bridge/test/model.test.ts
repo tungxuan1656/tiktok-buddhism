@@ -30,7 +30,7 @@ function fixture(found: Model | undefined, authenticated = true) {
   return { run: () => start({ type: 'session_start', reason: 'startup' }, ctx), state: () => ({ selected, thinking }) };
 }
 
-test('bot re-applies high without changing provider metadata or supported thinking levels', async () => {
+test('bot re-applies configured thinking level without changing provider metadata or supported thinking levels', async () => {
   const before = structuredClone(model);
   for (let i = 0; i < 2; i++) {
     const f = fixture(model);
@@ -41,7 +41,7 @@ test('bot re-applies high without changing provider metadata or supported thinki
     assert.deepEqual(selected, before);
     assert.equal(selected.baseUrl, model.baseUrl);
     assert.equal(selected.headers, model.headers);
-    assert.equal(thinking, 'high');
+    assert.equal(thinking, BOT_MODEL.thinking);
   }
   assert.deepEqual(model, before);
 });

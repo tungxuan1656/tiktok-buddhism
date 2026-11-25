@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 
-export const BOT_MODEL = { provider: '9router', id: 'cx/gpt-6.2-sol', thinking: 'high' } as const;
+export const BOT_MODEL = { provider: '9router', id: 'cx/gpt-6.2-sol', thinking: 'medium' } as const;
 
 export default function (pi: ExtensionAPI) {
   pi.on('session_start', async (_event, ctx) => {
