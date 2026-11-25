@@ -1,0 +1,39 @@
+{
+  "id": "SINGALAKA_01",
+  "name": "Singàlaka (thiết kế minh họa)",
+  "aliases": [
+    "Singàlaka",
+    "Singalaka",
+    "Siṅgālaka"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam thanh niên, da nâu ấm nhạt, mặt hơi góc cạnh, cằm gọn, lông mày tự nhiên, không râu, dái tai bình thường.",
+    "hair": "Tóc đen nâu gợn sóng, ngôi lệch, buộc búi nhỏ ở gáy; không búi đỉnh.",
+    "body": "Vóc người trưởng thành thanh vừa, hai tay chân tự nhiên, chân trần.",
+    "clothing": "Áo vải ngà tay ngắn, cổ xẻ chữ V nhỏ; khăn nâu đất nhạt vắt qua vai trái, vạt quấn be dài đến mắt cá; không trang sức."
+  },
+  "keep": [
+    "Giữ mặt trẻ sạch râu và tóc gợn buộc thấp.",
+    "Giữ áo ngà có tay, khăn nâu nhạt qua vai trái, vạt quấn be và chân trần; không đổi thành y tu sĩ."
+  ],
+  "can_vary": [
+    "Tư thế tay và hướng nhìn phù hợp cảnh.",
+    "Có thể đứng hoặc quỳ tự nhiên."
+  ],
+  "avoid": [
+    "Y tu sĩ, hào quang, bệ và trang sức.",
+    "Xem ảnh như bằng chứng diện mạo lịch sử."
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "note": "Thiết kế quy ước theo vai gia chủ tử trong bản văn, dùng ảnh phong cách gốc.",
+    "sha256": "b72080a01f2f82e275224ac80d1c89bf995f166a8e4c3371bba17ae5079ba9f6"
+  },
+  "review_note": "Pi đã xem JPEG sau nén: một người, toàn thân, rõ tóc, mặt, khăn và nếp vải; không chữ, không phụ kiện hay lỗi giải phẫu thấy được. Chưa được người dùng duyệt."
+}

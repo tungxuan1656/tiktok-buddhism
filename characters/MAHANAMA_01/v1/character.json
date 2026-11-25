@@ -1,0 +1,23 @@
+{
+  "id": "MAHANAMA_01",
+  "name": "Mahànàma (thiết kế minh họa)",
+  "aliases": ["Mahànàma", "Mahānāma", "Mahanama"],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam cư sĩ Nam Á đứng tuổi; da nâu ấm, mặt hơi vuông, lông mày đen hơi cong, ria mép đen gọn, má và cằm cạo sạch, nét trầm tĩnh.",
+    "hair": "Tóc đen dày, gợn nhẹ chải về sau và buộc búi nhỏ thấp sát gáy.",
+    "body": "Vóc dáng trung bình hơi đậm; vai vừa, tỷ lệ người trưởng thành đứng tuổi.",
+    "clothing": "Áo vải màu cát sáng đắp chéo, hai tay áo dài và kín cả hai vai; khăn vải đỏ đất trầm vắt qua vai phải người mặc; vạt quấn dài màu be xám; chân trần, không trang sức."
+  },
+  "keep": ["Cùng mặt, ria mép gọn, búi tóc thấp sát gáy.", "Cùng áo dài tay đắp chéo màu cát, khăn đỏ đất ở vai phải và vạt quấn màu be xám.", "Chì màu 2D, nét tiết chế, nền giấy gần trắng."],
+  "can_vary": ["Đứng, cúi đảnh lễ, ngồi chắp tay hoặc lắng nghe theo cảnh", "Hướng nhìn và biểu cảm nhẹ"],
+  "avoid": ["Cạo đầu, búi cao, râu cằm hoặc trang sức", "Thay bằng y tu sĩ", "Gán ảnh là diện mạo lịch sử đã xác minh"],
+  "references": ["reference.jpg"],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "note": "Thiết kế trong tập Người cư sĩ, chỉ dùng ví dụ phong cách gốc để gợi nét chì và nền sáng; nhân dạng là quy ước minh họa."
+  },
+  "review_note": "Pi đã xem ảnh sau nén: rõ mặt, ria mép, búi thấp, sắc áo khăn và tư thế tự nhiên; không chữ. Chưa được người dùng duyệt."
+}

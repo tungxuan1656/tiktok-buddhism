@@ -1,0 +1,19 @@
+{
+  "id": "UGGA_DAITHAN_01",
+  "name": "Ugga, vị đại thần của vua (thiết kế minh họa)",
+  "aliases": ["Đại thần Ugga", "Ugga, vị đại thần của vua"],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam trung niên, mặt thuôn, da nâu sáng ấm, mày đậm, mũi thẳng, mắt nâu, sạch râu.",
+    "hair": "Tóc nâu đen gợn sóng chải ra sau, dày ở phía trên, ôm gáy, không búi.",
+    "body": "Dáng người trưởng thành gọn, vai vừa.",
+    "clothing": "Vải màu kem viền vàng đất vắt vai trái nhân vật, vai phải để trần; vải quấn xanh ô-liu xám dài đến mắt cá; chân trần, không trang sức."
+  },
+  "keep": ["Giữ gương mặt sạch râu, tóc gợn sóng, áo kem viền vàng đất và vải quấn xanh ô-liu xám theo ảnh."],
+  "can_vary": ["Tư thế đứng, ngồi, kính lễ hoặc bạch; hướng nhìn và cử chỉ tự nhiên."],
+  "avoid": ["Không nhầm với gia chủ Ugga; không thêm mũ, trang sức hay đồ vật ngoài cảnh; không coi là chân dung lịch sử."],
+  "references": ["reference.jpg"],
+  "provenance": {"kind":"generated", "model":"cx/gpt-image-2.6-flare", "sha256":"09a2c43986fb748317e5d49ef6fd03d1bdf6762cf5396aa96484ae29ed1eff4d"},
+  "review_note": "Đã xem ảnh mẫu toàn thân sau nén: một người, nét chì, mặt và trang phục rõ, không chữ. Chưa được người dùng duyệt."
+}

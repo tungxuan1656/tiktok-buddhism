@@ -1,0 +1,40 @@
+{
+  "id": "KALIGODHA_01",
+  "name": "Thích nữ Kàligodhà (thiết kế minh họa)",
+  "aliases": [
+    "Kàligodhà",
+    "Godhà",
+    "Kāḷigodhā"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Mặt trái xoan hơi đầy, da nâu ấm, mắt hạnh nhân sẫm, lông mày cong tự nhiên; biểu cảm bình thản.",
+    "hair": "Tóc đen rẽ ngôi giữa vuốt gọn và búi thấp sát gáy; không trùm tóc.",
+    "body": "Nữ trưởng thành trung niên, vóc dáng thanh vừa, tỷ lệ tự nhiên.",
+    "clothing": "Vải quấn nâu đất hồng nhạt, viền nâu mảnh, khăn choàng từ vai trái phủ ngang ngực; áo lót trắng ngà dài tay che vai phải, chân trần, không trang sức."
+  },
+  "keep": [
+    "Giữ mặt, tông da và búi thấp đúng ảnh mẫu.",
+    "Giữ vải nâu đất hồng nhạt có viền nâu và áo trắng ngà, không đổi sang y tu sĩ."
+  ],
+  "can_vary": [
+    "Ngồi, đứng hoặc quỳ theo cảnh",
+    "Hướng nhìn, tư thế tay và nét mặt tiết chế"
+  ],
+  "avoid": [
+    "Trang sức, chấm trán, khăn trùm đầu",
+    "Hào quang hoặc bối cảnh ngoài yêu cầu",
+    "Khẳng định diện mạo lịch sử"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "note": "Mẫu không chữ tạo cho mục Cư sĩ chứng quả Dự lưu; ảnh mẫu gốc user-style-v1 chỉ tham chiếu nét chì và nền giấy. Không khẳng định diện mạo lịch sử.",
+    "sha256": "9cc09a2b25b14a4c0b1e3db32312ba470add3bbfbce518152c4ee9208ac94937"
+  },
+  "review_note": "Đã tự xem ảnh JPEG sau nén: một nhân vật, mặt và y phục rõ, không chữ hay phụ kiện; chưa được người dùng duyệt."
+}
