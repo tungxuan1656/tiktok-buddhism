@@ -114,11 +114,12 @@ nội dung, không bắt buộc tỷ lệ vùng chữ/tranh hoặc vị trí tr�
 ưu tiên tranh và chữ đầy đủ, rõ ràng, dễ đọc.
 
 - **Kiểm tra mẫu trước, vẽ theo lô sau**:
-  1. Chạy `node scripts/episode-tools.mjs validate EPISODE_DIR` để kiểm tra kịch bản, nguồn `verbatim` và ảnh nhân vật.
-  2. Chạy `node scripts/episode-tools.mjs build-prompts EPISODE_DIR --revision r01` để tự động sinh `prompts/001-r01.txt`… và `prompts/batch-r01.json` (không cần viết tay từng prompt).
+  1. Chạy `node scripts/episode-tools.mjs validate EPISODE_DIR` (lưu ý với tập `verbatim` có bìa/lời bình, gắn rõ `role` `cover`/`quote`/`commentary`/`closing` hoặc `source.exact_join_first_slide`). Các lệnh `build-prompts`, `draw-image.mjs` và `finalize` đều tự chạy lại cổng kiểm tra chung này.
+  2. Chạy `node scripts/episode-tools.mjs build-prompts EPISODE_DIR --revision r01` để tự động sinh `prompts/001-r01.txt`… và `prompts/batch-r01.json` gắn fingerprint. Nếu sửa `episode.json` sau khi build, bắt buộc chạy lại với `--force` (hoặc `--override` nếu chỉ sửa tay prompt mà nội dung kịch bản không đổi).
   3. Vẽ và mở kiểm tra **slide 1 trước** vào đúng `drafts/001-r01-a1` (khớp `batch-r01.json`: `node scripts/draw-image.mjs --slide EPISODE_JSON 1 prompts/001-r01.txt drafts/001-r01-a1 ...`) để chốt phong cách, kiểu chữ và nhân vật.
-  4. Khi slide 1 đạt, chạy `node scripts/draw-image.mjs --batch EPISODE_JSON prompts/batch-r01.json` (script tự bỏ qua `001-r01-a1` đã `succeeded` và dừng ngay nếu gặp `unknown`/`failed`), rồi gọi `read` **gộp 5–6 ảnh/lượt** để kiểm tra.
-  5. Khi cần xem tiến độ hoặc tiếp tục tập bị ngắt, chạy `node scripts/episode-tools.mjs status EPISODE_DIR` (có thể dùng `--slides 2,5` hoặc `--attempt a2` khi tạo prompt cho trang sửa).
+  4. Khi slide 1 đạt, chạy `node scripts/draw-image.mjs --batch EPISODE_JSON prompts/batch-r01.json` (script chỉ bỏ qua draft đã `succeeded` khớp fingerprint `request_sha256` và SHA-256 ảnh; chặn trùng slide và dừng ngay nếu gặp `unknown`/`in_flight`).
+  5. Khi gặp attempt `unknown`/`in_flight`, chỉ sau khi đối soát server/response mới được chạy `node scripts/draw-image.mjs --reconcile DRAFT_DIR --resolution reconciled_failed|reconciled_superseded --note "..."` (hoặc `--normalize` nếu đã có `response.bin`) rồi mới tạo attempt mới.
+  6. Khi cần xem tiến độ hoặc tiếp tục tập bị ngắt, chạy `node scripts/episode-tools.mjs status EPISODE_DIR`.
 - Lưu request, prompt, phản hồi gốc, MIME/kích thước thật và ảnh vào drafts.
   Điền đường dẫn ảnh vào `image` trong episode.json. Không để AI tự sửa chữ để vừa bố cục.
 

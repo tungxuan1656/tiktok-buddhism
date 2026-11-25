@@ -1,6 +1,7 @@
 import { lstat, readFile, readdir, realpath, rm } from 'node:fs/promises';
 import { basename, join, resolve, sep } from 'node:path';
 import { hash } from './artifacts.ts';
+import { resolveSourceDependencies } from '../scripts/lib/source.mjs';
 import type { Run, Store, Task } from './store.ts';
 
 async function directory(path: string): Promise<boolean> {
@@ -35,7 +36,13 @@ async function sourceDependencies(base: string): Promise<string[]> {
       const full = await realpath(path);
       if (!full.startsWith(base + sep) || (await lstat(full)).size > 128 * 1024) throw new Error('Unsafe snapshot');
       const episode = JSON.parse(await readFile(full, 'utf8'));
-      if (typeof episode.source?.file === 'string') await protect(resolve(base, episode.source.file));
+      for (const sourcePath of resolveSourceDependencies(base, episode)) {
+        try {
+          const real = await realpath(sourcePath);
+          if (!real.startsWith(base + sep)) throw new Error('Unsafe source symlink');
+          await protect(sourcePath);
+        } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+      }
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   }
   const links = async (path: string): Promise<void> => {

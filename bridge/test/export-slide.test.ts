@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -69,4 +69,49 @@ test('refuses different bytes and a symlink without overwriting either', async t
   await symlink(draft, alias);
   assert.equal(cli(draft, alias).status, 1);
   assert.deepEqual(await readFile(draft), bytes);
+});
+
+test('binds v2 checkpoint to episode content and rejects stale or mismatched drafts', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'export-bound-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'drafts', '001-r01-a1'), { recursive: true });
+  await mkdir(join(root, 'drafts', '002-r01-a1'), { recursive: true });
+  const d1 = join(root, 'drafts', '001-r01-a1', 'image.jpg');
+  const d2 = join(root, 'drafts', '002-r01-a1', 'image.jpg');
+  execFileSync('magick', ['-size', '1080x1440', 'xc:white', '-quality', '95', d1]);
+  execFileSync('magick', ['-size', '1080x1440', 'xc:ivory', '-quality', '95', d2]);
+  await writeFile(join(root, 'episode.json'), JSON.stringify({
+    mode: 'original',
+    slides: [
+      { text: 'Slide 1', scene: 'Cảnh 1', scene_type: 'concept', characters: [] },
+      { text: 'Slide 2', scene: 'Cảnh 2', scene_type: 'concept', characters: [] },
+    ],
+  }));
+  await writeFile(join(root, 'drafts', '001-r01-a1', 'status.json'), JSON.stringify({
+    state: 'succeeded',
+    plan: { slide: 1 },
+    slide_content_sha256: '0'.repeat(64),
+  }));
+  // Stale draft fingerprint must be refused at export time!
+  const staleRes = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', d1, join(root, 'output', 'r01', '001.jpg'), 'ok'], { encoding: 'utf8' });
+  assert.equal(staleRes.status, 1);
+  assert.match(staleRes.stderr, /is stale/);
+
+  // Wrong slide draft (slide 2 exported as 001.jpg) must be refused!
+  await writeFile(join(root, 'drafts', '002-r01-a1', 'status.json'), JSON.stringify({ state: 'succeeded', plan: { slide: 2 } }));
+  const wrongSlide = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', d2, join(root, 'output', 'r01', '001.jpg'), 'ok'], { encoding: 'utf8' });
+  assert.equal(wrongSlide.status, 1);
+  assert.match(wrongSlide.stderr, /belongs to slide 2/);
+
+  // Valid export produces bound schema_version 2 checkpoint.
+  await writeFile(join(root, 'drafts', '001-r01-a1', 'status.json'), JSON.stringify({ state: 'succeeded', plan: { slide: 1 } }));
+  const ok = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', d1, join(root, 'output', 'r01', '001.jpg'), 'Đã kiểm tra'], { encoding: 'utf8' });
+  assert.equal(ok.status, 0, ok.stderr);
+  const ck = JSON.parse(await readFile(join(root, 'output', 'r01', 'checks', '001.jpg.json'), 'utf8'));
+  assert.equal(ck.schema_version, 2);
+  assert.equal(ck.revision, 'r01');
+  assert.equal(ck.slide, 1);
+  assert.equal(ck.image_sha256, ck.sha256);
+  assert.ok(ck.slide_content_sha256);
+  assert.equal(ck.visual_check.passed, true);
 });

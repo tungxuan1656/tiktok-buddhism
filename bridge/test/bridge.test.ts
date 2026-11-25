@@ -660,6 +660,23 @@ test('retention protects source dependencies from latest/older snapshots and roo
     assert.equal(await readFile(join(task.dir, source), 'utf8'), 'Nguồn phải còn nguyên.', `${variant}: second sweep`);
     assert.equal(store.deliveries().length, 1);
   }
+
+  // Standardized source fields (source.path, source.text_path, source.verbatim_file, string source) are also protected inside prompts/.
+  for (const field of ['string', 'path', 'text_path', 'verbatim_file'] as const) {
+    const { bridge, store, runner, stateDir } = await setup(t);
+    runner.hook = async () => { await fixture(store, 1); };
+    await bridge.receive(message(1, 'Tập')); await settled(bridge);
+    const task = store.current()!;
+    const rel = 'prompts/protected-source.txt';
+    await mkdir(join(task.dir, 'prompts'), { recursive: true });
+    await writeFile(join(task.dir, rel), 'Nguồn trong prompts phải còn.');
+    const epPath = join(task.dir, 'output/r01/episode.json');
+    const ep = JSON.parse(await readFile(epPath, 'utf8'));
+    ep.source = field === 'string' ? rel : { [field]: rel };
+    await writeFile(epPath, JSON.stringify(ep));
+    await pruneTask(store, store.current()!, stateDir);
+    assert.equal(await readFile(join(task.dir, rel), 'utf8'), 'Nguồn trong prompts phải còn.', field);
+  }
 });
 
 test('local sweep previews without writes then cleans an already-delivered closed task without Pi or Telegram', async t => {

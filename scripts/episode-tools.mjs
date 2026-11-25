@@ -1,163 +1,31 @@
-import { access, lstat, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { lstat, mkdir, readFile, readdir } from 'node:fs/promises';
+import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DEFAULT_STYLE_REL = join('references', 'user-style-v1', 'example-01-original.png');
-const VALID_MODES = ['original', 'adaptation', 'verbatim'];
-const VALID_SCENE_TYPES = ['event', 'simile', 'concept'];
-const INTERNAL_PATTERNS = [
-  /\bbản bạn cung cấp\b/i,
-  /\btheo yêu cầu của bạn\b/i,
-  /\bbản nháp\b/i,
-  /\bđã kiểm tra\b/i,
-  /\bready_for_review\b/i,
-  /^\s*Tập\s+\d+\s*[-–:]/i,
-  /^\s*Phần\s+\d+(\.\d+)?\s*[-–:]/i,
-];
+import { parseArgs } from 'node:util';
+import {
+  computePromptInputFingerprint,
+  computeRequestFingerprint,
+  normalizeObjectsValue,
+  sha256Bytes,
+} from './lib/fingerprint.mjs';
+import {
+  confineExistingPath,
+  confineRelativeFile,
+  confineTargetPath,
+  isSafeAttempt,
+  isSafeRevision,
+  writeAtomic,
+} from './lib/paths.mjs';
+import {
+  CHECKPOINT_SCHEMA_VERSION,
+  DEFAULT_STYLE_REL,
+  MAX_REFS,
+  REPO_ROOT,
+  UNRESOLVED_STATES,
+} from './lib/policy.mjs';
+import { readEpisodeJson, readImageInfo, validateEpisodeData } from './lib/schema.mjs';
 
 const pad3 = n => String(n).padStart(3, '0');
-const exists = path => access(path).then(() => true, () => false);
-const readJson = async path => JSON.parse(await readFile(path, 'utf8'));
-const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
-const normalizeEol = text => text.replace(/\r\n/g, '\n').trim();
-
-async function writeAtomic(target, content) {
-  await mkdir(dirname(target), { recursive: true });
-  const tmp = `${target}.${process.pid}.tmp`;
-  await writeFile(tmp, content, 'utf8');
-  await rename(tmp, target);
-}
-
-function confineRelative(baseDir, relPath) {
-  if (typeof relPath !== 'string' || !relPath.trim() || isAbsolute(relPath)) return null;
-  const base = resolve(baseDir);
-  const full = resolve(base, relPath);
-  const rel = relative(base, full);
-  if (!rel || rel.startsWith(`..${sep}`) || rel === '..' || isAbsolute(rel)) return null;
-  return full;
-}
-
-function resolveSourceFile(episodeDir, ep) {
-  const candidates = typeof ep.source === 'string'
-    ? [ep.source]
-    : ep.source && typeof ep.source === 'object'
-      ? [ep.source.file, ep.source.path, ep.source.text_path, ep.source.verbatim_file, 'source.txt']
-      : ['source.txt'];
-  for (const rel of candidates) {
-    if (typeof rel !== 'string' || !rel.trim()) continue;
-    const full = confineRelative(episodeDir, rel);
-    return { rel, full };
-  }
-  return { rel: 'source.txt', full: join(resolve(episodeDir), 'source.txt') };
-}
-
-function sequenceMatchesSource(seq, src, prefixes) {
-  if (!seq.length) return false;
-  if (Array.isArray(prefixes) && prefixes.length === seq.length) {
-    const joined = normalizeEol(seq.map((s, i) => `${prefixes[i] ?? ''}${s?.text ?? ''}`).join(''));
-    if (joined === src) return true;
-  }
-  const rawJoined = normalizeEol(seq.map(s => s?.text ?? '').join(''));
-  if (rawJoined === src) return true;
-  const nlJoined = normalizeEol(seq.map(s => s?.text ?? '').join('\n'));
-  if (nlJoined === src) return true;
-  const spaceJoined = normalizeEol(seq.map(s => String(s?.text ?? '').trim()).join(' ')).replace(/\s+/g, ' ');
-  return spaceJoined === src.replace(/\s+/g, ' ');
-}
-
-function matchesVerbatim(slides, src, sourceMeta) {
-  const prefixes = Array.isArray(sourceMeta?.exact_join_prefixes) ? sourceMeta.exact_join_prefixes : undefined;
-  const firstSlide = Number.isSafeInteger(sourceMeta?.exact_join_first_slide) ? sourceMeta.exact_join_first_slide : undefined;
-  if (firstSlide !== undefined) {
-    if (firstSlide < 1 || firstSlide > slides.length) return false;
-    return sequenceMatchesSource(slides.slice(firstSlide - 1), src, prefixes);
-  }
-  if (sequenceMatchesSource(slides, src, prefixes && prefixes.length === slides.length ? prefixes : undefined)) {
-    return true;
-  }
-  if (slides.length > 1) {
-    const body = slides.slice(1);
-    return sequenceMatchesSource(body, src, prefixes && prefixes.length === body.length ? prefixes : undefined);
-  }
-  return false;
-}
-
-async function loadChar(episodeDir, ref) {
-  const relDir = join('references', ref.id, ref.version);
-  const absDir = join(episodeDir, relDir);
-  const jsonPath = join(absDir, 'character.json');
-  if (!(await exists(jsonPath))) return { error: `Missing character snapshot: ${relDir}/character.json` };
-  const data = await readJson(jsonPath);
-  const refs = Array.isArray(data.references) ? data.references : [];
-  if (!refs.length) return { error: `No reference images in ${relDir}/character.json` };
-  const refPaths = [];
-  for (const r of refs) {
-    const full = confineRelative(absDir, r);
-    if (!full || !(await exists(full))) return { error: `Missing character image: ${join(relDir, String(r))}` };
-    refPaths.push(join(relDir, r));
-  }
-  return { id: ref.id, version: ref.version, data, refPaths };
-}
-
-/** Validate episode JSON schema, editorial text checks, verbatim source match, and character snapshots. */
-export async function validateEpisode(episodeDir) {
-  const dir = resolve(episodeDir);
-  const issues = [];
-  const epPath = join(dir, 'episode.json');
-  if (!(await exists(epPath))) return { ok: false, issues: ['Missing episode.json'] };
-  const ep = await readJson(epPath);
-  if (!VALID_MODES.includes(ep.mode)) {
-    issues.push(`mode must be one of ${VALID_MODES.join('|')} (got "${ep.mode}")`);
-  }
-  if (!Array.isArray(ep.slides) || ep.slides.length < 1 || ep.slides.length > 35) {
-    issues.push(`slides[] must have 1-35 items (got ${Array.isArray(ep.slides) ? ep.slides.length : 'none'})`);
-  }
-  const seenChars = new Map();
-  for (let i = 0; i < (Array.isArray(ep.slides) ? ep.slides.length : 0); i++) {
-    const s = ep.slides[i];
-    const num = i + 1;
-    if (typeof s?.text !== 'string' || !s.text.trim()) issues.push(`Slide ${num}: empty text`);
-    else {
-      for (const pat of INTERNAL_PATTERNS) {
-        if (pat.test(s.text)) issues.push(`Slide ${num}: possible internal/management text matching ${pat}`);
-      }
-    }
-    if (typeof s?.scene !== 'string' || !s.scene.trim()) issues.push(`Slide ${num}: empty scene`);
-    if (!VALID_SCENE_TYPES.includes(s?.scene_type)) issues.push(`Slide ${num}: invalid scene_type "${s?.scene_type}"`);
-    if (s?.characters !== undefined && !Array.isArray(s.characters)) {
-      issues.push(`Slide ${num}: characters must be an array`);
-      continue;
-    }
-    let refCount = 1; // Style reference is always included as image 1.
-    for (const c of s?.characters ?? []) {
-      if (typeof c?.id !== 'string' || !c.id.trim() || typeof c?.version !== 'string' || !c.version.trim()) {
-        issues.push(`Slide ${num}: invalid character reference (require id and version)`);
-        continue;
-      }
-      const key = `${c.id}@${c.version}`;
-      if (!seenChars.has(key)) seenChars.set(key, await loadChar(dir, c));
-      const loaded = seenChars.get(key);
-      if (loaded.error) issues.push(`Slide ${num}: ${loaded.error}`);
-      else refCount += loaded.refPaths.length;
-    }
-    if (refCount > 10) issues.push(`Slide ${num}: ${refCount} reference images exceed API maximum of 10`);
-  }
-  if (ep.mode === 'verbatim') {
-    const { rel, full } = resolveSourceFile(dir, ep);
-    if (!full) issues.push(`Invalid verbatim source path: ${rel}`);
-    else if (!(await exists(full))) issues.push(`Mode verbatim requires ${rel}`);
-    else if (Array.isArray(ep.slides)) {
-      const src = normalizeEol(await readFile(full, 'utf8'));
-      const sourceMeta = ep.source && typeof ep.source === 'object' ? ep.source : undefined;
-      if (!matchesVerbatim(ep.slides, src, sourceMeta)) {
-        issues.push(`Verbatim check failed: joined slides[].text does not match ${rel}`);
-      }
-    }
-  }
-  return { ok: issues.length === 0, mode: ep.mode, slideCount: Array.isArray(ep.slides) ? ep.slides.length : 0, issues };
-}
 
 function formatCharDesc(loaded) {
   const id = loaded.data.identity ?? {};
@@ -167,30 +35,22 @@ function formatCharDesc(loaded) {
   return `${loaded.id}/${loaded.version} (${parts}${keep}${avoid})`;
 }
 
-function formatAllowedObjects(rawObjects) {
-  if (Array.isArray(rawObjects)) {
-    const items = rawObjects.map(v => String(v ?? '').trim()).filter(Boolean);
-    return items.length ? items.join(', ') : null;
-  }
-  if (typeof rawObjects === 'string') {
-    const text = rawObjects.trim();
-    return text || null;
-  }
-  return null;
-}
-
 async function resolveStyleRef(episodeDir, styleRef) {
+  const allowedRoots = [episodeDir, join(REPO_ROOT, 'references')];
   if (styleRef) {
-    const candidates = isAbsolute(styleRef) ? [styleRef] : [resolve(styleRef), resolve(REPO_ROOT, styleRef)];
+    const candidates = isAbsolute(styleRef) ? [styleRef] : [resolve(episodeDir, styleRef), resolve(REPO_ROOT, styleRef)];
     for (const candidate of candidates) {
-      if (await exists(candidate)) return candidate;
+      const checked = await confineExistingPath(allowedRoots, candidate, { requireRegularFile: true }).catch(() => null);
+      if (checked) return checked.real;
     }
-    throw new Error(`Missing style reference: ${styleRef}`);
+    throw new Error(`Missing or unsafe style reference: ${styleRef}`);
   }
-  const epSnapshot = join(episodeDir, DEFAULT_STYLE_REL);
-  if (await exists(epSnapshot)) return epSnapshot;
-  const repoDefault = join(REPO_ROOT, DEFAULT_STYLE_REL);
-  if (await exists(repoDefault)) return repoDefault;
+  const epCandidate = join(episodeDir, DEFAULT_STYLE_REL);
+  const epChecked = await confineExistingPath([episodeDir], epCandidate, { requireRegularFile: true }).catch(() => null);
+  if (epChecked) return epChecked.real;
+  const repoCandidate = join(REPO_ROOT, DEFAULT_STYLE_REL);
+  const repoChecked = await confineExistingPath([join(REPO_ROOT, 'references')], repoCandidate, { requireRegularFile: true }).catch(() => null);
+  if (repoChecked) return repoChecked.real;
   throw new Error(`Missing style reference: ${DEFAULT_STYLE_REL}`);
 }
 
@@ -217,24 +77,53 @@ export function parseSlidesSpec(spec, maxSlide) {
   return [...selected].sort((a, b) => a - b);
 }
 
-/** Generate slide prompt files and batch manifest JSON from episode.json and character snapshots. */
-export async function buildPrompts(episodeDir, { revision = 'r01', attempt = 'a1', slides: onlySlides, force = false, styleRef } = {}) {
-  if (!/^r\d{2,}$/.test(revision)) throw new Error(`Invalid revision "${revision}" (expected r01, r02...)`);
-  if (!/^[a-z0-9-]+$/i.test(attempt)) throw new Error(`Invalid attempt "${attempt}"`);
+/** Validate episode JSON schema, editorial text checks, verbatim source match, and character snapshots. */
+export async function validateEpisode(episodeDir) {
   const dir = resolve(episodeDir);
-  const ep = await readJson(join(dir, 'episode.json'));
-  if (!Array.isArray(ep.slides) || ep.slides.length < 1 || ep.slides.length > 35) {
-    throw new Error('episode.json must have 1-35 slides');
+  const epPath = join(dir, 'episode.json');
+  const exists = await lstat(epPath).then(() => true, () => false);
+  if (!exists) return { ok: false, issues: ['Missing episode.json'] };
+  const ep = await readEpisodeJson(epPath, dir);
+  const res = await validateEpisodeData(ep, dir, { stage: 'validate' });
+  return {
+    ok: res.ok,
+    mode: res.mode,
+    slideCount: res.slideCount,
+    sourceSha256: res.sourceSha256,
+    slideFingerprints: res.slideFingerprints,
+    issues: res.issues,
+  };
+}
+
+/** Generate slide prompt files and batch manifest JSON from validated episode.json and character snapshots. */
+export async function buildPrompts(episodeDir, {
+  revision = 'r01',
+  attempt = 'a1',
+  slides: onlySlides,
+  force = false,
+  override = false,
+  styleRef,
+} = {}) {
+  if (!isSafeRevision(revision)) throw new Error(`Invalid revision "${revision}" (expected r01, r02...)`);
+  if (!isSafeAttempt(attempt)) throw new Error(`Invalid attempt "${attempt}"`);
+  const dir = resolve(episodeDir);
+  const ep = await readEpisodeJson(join(dir, 'episode.json'), dir);
+  const validation = await validateEpisodeData(ep, dir, { stage: 'build' });
+  if (!validation.ok) {
+    throw new Error(`Episode validation failed before build-prompts:\n- ${validation.issues.join('\n- ')}`);
   }
+
   if (onlySlides) {
     if (!Array.isArray(onlySlides) || !onlySlides.length || onlySlides.some(n => !Number.isSafeInteger(n) || n < 1 || n > ep.slides.length)) {
       throw new Error(`Invalid slides selection for 1-${ep.slides.length}`);
     }
   }
+
   const resolvedStyleRef = await resolveStyleRef(dir, styleRef);
+  const styleInfo = await readImageInfo(resolvedStyleRef);
+  await confineTargetPath(dir, 'prompts');
   await mkdir(join(dir, 'prompts'), { recursive: true });
 
-  const charCache = new Map();
   const generated = [];
   const skipped = [];
   const manifest = [];
@@ -243,31 +132,34 @@ export async function buildPrompts(episodeDir, { revision = 'r01', attempt = 'a1
     const num = i + 1;
     if (onlySlides && !onlySlides.includes(num)) continue;
     const s = ep.slides[i];
+    const resolvedChars = validation.resolvedCharsBySlide[i] ?? [];
+    const slideContentSha256 = validation.slideFingerprints[i];
+    const inputSha256 = computePromptInputFingerprint({
+      slideContentSha256,
+      styleRefSha256: styleInfo.sha256,
+    });
+
     const refs = [resolvedStyleRef];
+    const refHashes = [styleInfo.sha256];
     const refLabels = ['1. Ảnh phong cách (chỉ tham chiếu nét chì, kiểu chữ, nền giấy và khoảng trắng; không chép chữ/người/vật)'];
     const charDescs = [];
 
-    for (const c of s.characters ?? []) {
-      const key = `${c.id}@${c.version}`;
-      if (!charCache.has(key)) {
-        const loaded = await loadChar(dir, c);
-        if (loaded.error) throw new Error(loaded.error);
-        charCache.set(key, loaded);
-      }
-      const loaded = charCache.get(key);
+    for (const loaded of resolvedChars) {
       charDescs.push(formatCharDesc(loaded));
-      for (const relImg of loaded.refPaths) {
-        refs.push(join(dir, relImg));
+      for (let idx = 0; idx < loaded.refPaths.length; idx++) {
+        refs.push(join(dir, loaded.refPaths[idx]));
+        refHashes.push(loaded.refInfos[idx].sha256);
         refLabels.push(`${refs.length}. Định danh ${loaded.id}/${loaded.version} (giữ khuôn mặt, tóc, vóc dáng, y phục; không chép tư thế/nền mẫu)`);
       }
     }
-    if (refs.length > 10) throw new Error(`Slide ${num}: ${refs.length} reference images exceed API maximum of 10`);
+    if (refs.length > MAX_REFS) throw new Error(`Slide ${num}: ${refs.length} reference images exceed API maximum of ${MAX_REFS}`);
 
     const symbolic = s.scene_type === 'simile' || s.scene_type === 'concept'
       ? ' Hình biểu trưng, không dựng thành sự kiện lịch sử.' : '';
-    const allowedObjects = formatAllowedObjects(s.objects);
-    const objectLine = allowedObjects
-      ? `Vật thể được phép: ${allowedObjects}. Không thêm người, vật thể, hào quang hay hiệu ứng ngoài danh sách.`
+    const allowedObjects = normalizeObjectsValue(s.objects);
+    const allowedObjectsText = Array.isArray(allowedObjects) ? allowedObjects.join(', ') : allowedObjects;
+    const objectLine = allowedObjectsText
+      ? `Vật thể được phép: ${allowedObjectsText}. Không thêm người, vật thể, hào quang hay hiệu ứng ngoài danh sách.`
       : 'Không thêm người, vật thể, hào quang hay hiệu ứng ngoài cảnh yêu cầu.';
     const content = [
       'Tạo 1 slide minh họa Phật giáo 2D hoàn chỉnh (khung dọc 3:4, mục tiêu 1080 × 1440), có đúng đoạn chữ tiếng Việt bên dưới.',
@@ -289,132 +181,306 @@ export async function buildPrompts(episodeDir, { revision = 'r01', attempt = 'a1
       '',
     ].join('\n');
 
+    const generatedPromptSha256 = sha256Bytes(Buffer.from(content, 'utf8'));
     const promptRel = join('prompts', `${pad3(num)}-${revision}.txt`);
-    const promptAbs = join(dir, promptRel);
-    if (!force && (await exists(promptAbs))) skipped.push(promptRel);
-    else {
-      await writeFile(promptAbs, content, 'utf8');
+    const metaRel = join('prompts', `${pad3(num)}-${revision}.meta.json`);
+    const promptAbs = await confineTargetPath(dir, promptRel);
+    const metaAbs = await confineTargetPath(dir, metaRel);
+
+    const promptExists = await lstat(promptAbs).then(() => true, () => false);
+    let finalPromptSha256 = generatedPromptSha256;
+
+    if (promptExists && !force) {
+      const checkedPrompt = await confineRelativeFile(dir, promptRel);
+      const checkedMeta = await confineRelativeFile(dir, metaRel).catch(() => null);
+      if (!checkedMeta) {
+        throw new Error(`Untracked or missing metadata for existing prompt ${promptRel}; rebuild with --force`);
+      }
+      const meta = JSON.parse(await readFile(checkedMeta.real, 'utf8'));
+      if (meta?.input_sha256 !== inputSha256 || meta?.slide_content_sha256 !== slideContentSha256) {
+        throw new Error(`Stale prompt for slide ${num} (${promptRel}): episode content or references changed; rebuild with --force or use a new revision`);
+      }
+      const existingPromptBytes = await readFile(checkedPrompt.real);
+      const actualPromptSha256 = sha256Bytes(existingPromptBytes);
+      if (actualPromptSha256 !== meta.prompt_sha256) {
+        if (!override) {
+          throw new Error(`Prompt ${promptRel} was modified manually; pass --override to acknowledge manual edit or --force to regenerate`);
+        }
+        await writeAtomic(metaAbs, `${JSON.stringify({
+          ...meta,
+          prompt_sha256: actualPromptSha256,
+          override: true,
+        }, null, 2)}\n`);
+      }
+      finalPromptSha256 = actualPromptSha256;
+      skipped.push(promptRel);
+    } else {
+      await writeAtomic(promptAbs, content);
+      await writeAtomic(metaAbs, `${JSON.stringify({
+        schema_version: 1,
+        revision,
+        slide: num,
+        input_sha256: inputSha256,
+        slide_content_sha256: slideContentSha256,
+        prompt_sha256: generatedPromptSha256,
+        style_ref_sha256: styleInfo.sha256,
+        override: false,
+      }, null, 2)}\n`);
       generated.push(promptRel);
     }
+
+    const workDir = await confineTargetPath(dir, join('drafts', `${pad3(num)}-${revision}-${attempt}`));
+    const requestSha256 = computeRequestFingerprint({
+      slideContentSha256,
+      promptSha256: finalPromptSha256,
+      referenceHashes: refHashes,
+    });
     manifest.push({
       slide: num,
       promptFile: promptAbs,
-      workDir: join(dir, 'drafts', `${pad3(num)}-${revision}-${attempt}`),
+      workDir,
       references: refs,
+      slide_content_sha256: slideContentSha256,
+      prompt_sha256: finalPromptSha256,
+      request_sha256: requestSha256,
     });
   }
 
-  const manifestPath = join(dir, 'prompts', `batch-${revision}.json`);
+  const manifestPath = await confineTargetPath(dir, join('prompts', `batch-${revision}.json`));
   await writeAtomic(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   return { ok: true, revision, attempt, generated: generated.length, skipped: skipped.length, batchManifest: manifestPath };
 }
 
-/** Report draft, export, and visual-check status for every slide in the given revision. */
+function attemptSortKey(name) {
+  const m = /-a(\d+)$/i.exec(name);
+  return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+/** Report draft, export, and verified visual-check status for every slide in the given revision. */
 export async function episodeStatus(episodeDir, { revision = 'r01' } = {}) {
+  if (!isSafeRevision(revision)) throw new Error(`Invalid revision "${revision}" (expected r01, r02...)`);
   const dir = resolve(episodeDir);
-  const ep = await readJson(join(dir, 'episode.json'));
+  const ep = await readEpisodeJson(join(dir, 'episode.json'), dir);
+  const validation = await validateEpisodeData(ep, dir, { stage: 'validate' });
   const draftsDir = join(dir, 'drafts');
-  const draftEntries = (await exists(draftsDir))
-    ? (await readdir(draftsDir)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+  const draftEntries = await lstat(draftsDir).then(st => st.isDirectory(), () => false)
+    ? (await readdir(draftsDir)).sort((a, b) => {
+      const diff = attemptSortKey(a) - attemptSortKey(b);
+      return diff !== 0 ? diff : a.localeCompare(b, undefined, { numeric: true });
+    })
     : [];
+
   const slides = [];
+  const outDir = join(dir, 'output', revision);
   for (let i = 0; i < (ep.slides?.length ?? 0); i++) {
     const num = i + 1;
     const prefix = `${pad3(num)}-${revision}`;
     const matching = draftEntries.filter(name => name === prefix || name.startsWith(`${prefix}-`));
-    const latestDraft = matching.at(-1);
+    const latestDraft = matching.at(-1) ?? null;
     let draftState = null;
-    if (latestDraft) {
-      const stPath = join(draftsDir, latestDraft, 'status.json');
-      if (await exists(stPath)) draftState = (await readJson(stPath)).state ?? null;
+    const unresolvedAttempts = [];
+    for (const d of matching) {
+      const checked = await confineRelativeFile(dir, join('drafts', d, 'status.json')).catch(() => null);
+      if (!checked) continue;
+      const rec = JSON.parse(await readFile(checked.real, 'utf8'));
+      if (d === latestDraft) draftState = rec.state ?? null;
+      if (UNRESOLVED_STATES.has(rec.state)) unresolvedAttempts.push({ draft: d, state: rec.state });
     }
-    const outDir = join(dir, 'output', revision);
-    const outImg = join(outDir, `${pad3(num)}.jpg`);
-    const checkFile = join(outDir, 'checks', `${pad3(num)}.jpg.json`);
+
+    let imgName = null;
+    let exportState = 'missing';
+    let actualImgHash = null;
+    for (const ext of ['.jpg', '.jpeg', '.png']) {
+      const relOut = join('output', revision, `${pad3(num)}${ext}`);
+      const candidateExists = await lstat(join(dir, relOut)).then(() => true, () => false);
+      if (!candidateExists) continue;
+      imgName = `${pad3(num)}${ext}`;
+      try {
+        const checkedOut = await confineRelativeFile(dir, relOut);
+        const info = await readImageInfo(checkedOut.real, { requireNormalized1080: true });
+        actualImgHash = info.sha256;
+        exportState = 'verified';
+      } catch {
+        exportState = 'corrupted';
+      }
+      break;
+    }
+
+    let checkState = 'missing';
+    if (imgName) {
+      const relCheck = join('output', revision, 'checks', `${imgName}.json`);
+      const checkExists = await lstat(join(dir, relCheck)).then(() => true, () => false);
+      if (checkExists) {
+        try {
+          const checkedFile = await confineRelativeFile(dir, relCheck);
+          const ck = JSON.parse(await readFile(checkedFile.real, 'utf8'));
+          const liveFp = validation.slideFingerprints[i] ?? null;
+          const hashOk = actualImgHash && ck.sha256 === actualImgHash && (ck.image_sha256 ?? ck.sha256) === actualImgHash;
+          const noteOk = typeof ck?.visual_check === 'object'
+            ? ck.visual_check?.passed === true && typeof ck.visual_check?.note === 'string' && ck.visual_check.note.trim().length > 0
+            : false;
+          if ((ck.schema_version ?? 0) < CHECKPOINT_SCHEMA_VERSION || ck.revision !== revision || ck.slide !== num || ck.image !== imgName || !noteOk) {
+            checkState = 'corrupted';
+          } else if (!hashOk || !liveFp || ck.slide_content_sha256 !== liveFp) {
+            checkState = 'stale';
+          } else {
+            checkState = 'verified';
+          }
+        } catch {
+          checkState = 'corrupted';
+        }
+      }
+    }
+
     slides.push({
       slide: num,
-      draft: latestDraft ?? null,
+      draft: latestDraft,
       draftState,
-      exported: await exists(outImg),
-      checked: await exists(checkFile),
+      unresolvedAttempts,
+      exported: exportState === 'verified',
+      exportState,
+      checked: checkState === 'verified',
+      checkState,
     });
   }
-  return { episodeDir: dir, revision, slideCount: slides.length, slides };
+  return { episodeDir: dir, revision, valid: validation.ok, slideCount: slides.length, slides };
 }
 
-/** Verify exported outputs and SHA-256 check files, then update episode.json and save the revision snapshot. */
+/** Verify exported outputs, image validity, and bound visual-check checkpoints, then immutably commit the revision snapshot. */
 export async function finalizeEpisode(episodeDir, { revision = 'r01' } = {}) {
-  if (!/^r\d{2,}$/.test(revision)) throw new Error(`Invalid revision "${revision}" (expected r01, r02...)`);
+  if (!isSafeRevision(revision)) throw new Error(`Invalid revision "${revision}" (expected r01, r02...)`);
   const dir = resolve(episodeDir);
   const epPath = join(dir, 'episode.json');
-  const ep = await readJson(epPath);
-  if (!Array.isArray(ep.slides) || ep.slides.length < 1 || ep.slides.length > 35) {
-    throw new Error('episode.json must have 1-35 slides');
+  const ep = await readEpisodeJson(epPath, dir);
+  const validation = await validateEpisodeData(ep, dir, { stage: 'finalize' });
+  if (!validation.ok) {
+    throw new Error(`Episode validation failed before finalize:\n- ${validation.issues.join('\n- ')}`);
   }
-  const outDir = join(dir, 'output', revision);
+  if (ep.status === 'approved' && ep.revision === revision) {
+    throw new Error(`Revision ${revision} is already approved and cannot be re-finalized`);
+  }
+
+  const outRelDir = join('output', revision);
+  await confineTargetPath(dir, outRelDir);
   const files = [];
+
   for (let i = 0; i < ep.slides.length; i++) {
     const num = i + 1;
     const base = pad3(num);
     let imgName;
+    let checkedImg;
     for (const ext of ['.jpg', '.jpeg', '.png']) {
-      const candidate = join(outDir, `${base}${ext}`);
-      const stat = await lstat(candidate).catch(() => null);
-      if (stat?.isFile()) { imgName = `${base}${ext}`; break; }
+      const relCandidate = join(outRelDir, `${base}${ext}`);
+      const candidateExists = await lstat(join(dir, relCandidate)).then(() => true, () => false);
+      if (candidateExists) {
+        checkedImg = await confineRelativeFile(dir, relCandidate);
+        imgName = `${base}${ext}`;
+        break;
+      }
     }
-    if (!imgName) throw new Error(`Missing exported image for slide ${num} in output/${revision}/`);
-    const imgPath = join(outDir, imgName);
-    const checkPath = join(outDir, 'checks', `${imgName}.json`);
-    const checkStat = await lstat(checkPath).catch(() => null);
-    if (!checkStat?.isFile()) throw new Error(`Missing check checkpoint for slide ${num}: output/${revision}/checks/${imgName}.json`);
-    const check = await readJson(checkPath);
-    if (check?.image !== imgName || typeof check?.visual_check !== 'string' || !check.visual_check.trim()) {
-      throw new Error(`Invalid check checkpoint for slide ${num}`);
+    if (!imgName || !checkedImg) {
+      throw new Error(`Missing exported image for slide ${num} in output/${revision}/`);
     }
-    const actualHash = sha256(await readFile(imgPath));
-    if (check.sha256 !== actualHash) throw new Error(`SHA-256 mismatch for slide ${num} (${imgName})`);
+    const imgInfo = await readImageInfo(checkedImg.real, { requireNormalized1080: true });
+    const checkRel = join(outRelDir, 'checks', `${imgName}.json`);
+    const checkedCk = await confineRelativeFile(dir, checkRel).catch(() => null);
+    if (!checkedCk) {
+      throw new Error(`Missing check checkpoint for slide ${num}: output/${revision}/checks/${imgName}.json`);
+    }
+    const check = JSON.parse(await readFile(checkedCk.real, 'utf8'));
+    if ((check?.schema_version ?? 0) < CHECKPOINT_SCHEMA_VERSION) {
+      throw new Error(`Outdated or unbound check checkpoint schema for slide ${num}; re-export with --checked`);
+    }
+    if (check.revision !== revision || check.slide !== num || check.image !== imgName) {
+      throw new Error(`Check checkpoint mismatch for slide ${num} (expected revision=${revision}, slide=${num}, image=${imgName})`);
+    }
+    const noteOk = typeof check.visual_check === 'object' && check.visual_check !== null
+      && check.visual_check.passed === true
+      && typeof check.visual_check.note === 'string' && check.visual_check.note.trim().length > 0;
+    if (!noteOk) {
+      throw new Error(`Invalid or unpassed visual_check in checkpoint for slide ${num}`);
+    }
+    if (check.sha256 !== imgInfo.sha256 || check.image_sha256 !== imgInfo.sha256) {
+      throw new Error(`SHA-256 mismatch for slide ${num} (${imgName})`);
+    }
+    if (check.slide_content_sha256 !== validation.slideFingerprints[i]) {
+      throw new Error(`Stale visual check for slide ${num}: episode content or character snapshot changed after visual check`);
+    }
     const relPath = `output/${revision}/${imgName}`;
     ep.slides[i].image = relPath;
     files.push(relPath);
   }
+
   ep.revision = revision;
   ep.status = 'ready_for_review';
   const serialized = `${JSON.stringify(ep, null, 2)}\n`;
-  const snapshotPath = join(outDir, 'episode.json');
-  await writeAtomic(snapshotPath, serialized);
+  const snapshotRel = join(outRelDir, 'episode.json');
+  const snapshotTarget = await confineTargetPath(dir, snapshotRel);
+
+  const snapshotExists = await lstat(snapshotTarget).then(() => true, () => false);
+  if (snapshotExists) {
+    const existingSnap = await confineRelativeFile(dir, snapshotRel);
+    const existingRaw = await readFile(existingSnap.real, 'utf8');
+    if (existingRaw !== serialized) {
+      throw new Error(`Finalized snapshot output/${revision}/episode.json already exists with different content; create a new revision instead of overwriting`);
+    }
+    // Idempotent recovery: ensure root episode.json is also reconciled if a crash happened mid-finalize.
+    const currentEpRaw = await readFile(epPath, 'utf8');
+    if (currentEpRaw !== serialized) await writeAtomic(epPath, serialized);
+    return { ok: true, idempotent: true, revision, status: ep.status, episodeSnapshot: snapshotTarget, files };
+  }
+
+  await writeAtomic(snapshotTarget, serialized);
   await writeAtomic(epPath, serialized);
-  return { ok: true, revision, status: ep.status, episodeSnapshot: snapshotPath, files };
+  return { ok: true, revision, status: ep.status, episodeSnapshot: snapshotTarget, files };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const [cmd, dir, ...rest] = process.argv.slice(2);
-  const flag = name => {
-    const idx = rest.indexOf(name);
-    if (idx === -1) return undefined;
-    if (idx + 1 >= rest.length) throw new Error(`Missing value for ${name}`);
-    return rest[idx + 1];
-  };
   try {
-    if (cmd === 'validate' && dir) {
+    const { values, positionals } = parseArgs({
+      args: process.argv.slice(2),
+      allowPositionals: true,
+      strict: true,
+      options: {
+        revision: { type: 'string' },
+        attempt: { type: 'string' },
+        slides: { type: 'string' },
+        force: { type: 'boolean', default: false },
+        override: { type: 'boolean', default: false },
+        'style-ref': { type: 'string' },
+      },
+    });
+    const [cmd, dir, ...extra] = positionals;
+    if (!cmd || !dir || extra.length) {
+      throw new Error('Usage: node scripts/episode-tools.mjs <validate|build-prompts|status|finalize> EPISODE_DIR [--revision r01] [--attempt a1] [--slides 1,2-5] [--force] [--override] [--style-ref PATH]');
+    }
+    if (cmd === 'validate') {
       const res = await validateEpisode(dir);
       console.log(JSON.stringify(res, null, 2));
       if (!res.ok) process.exitCode = 1;
-    } else if (cmd === 'build-prompts' && dir) {
-      const revision = flag('--revision') ?? 'r01';
-      const attempt = flag('--attempt') ?? 'a1';
-      const ep = await readJson(join(resolve(dir), 'episode.json'));
-      const slides = parseSlidesSpec(flag('--slides'), Array.isArray(ep.slides) ? ep.slides.length : 0);
-      const res = await buildPrompts(dir, { revision, attempt, slides, force: rest.includes('--force') });
+    } else if (cmd === 'build-prompts') {
+      const revision = values.revision ?? 'r01';
+      const attempt = values.attempt ?? 'a1';
+      const resolvedDir = resolve(dir);
+      const ep = await readEpisodeJson(join(resolvedDir, 'episode.json'), resolvedDir);
+      const slides = parseSlidesSpec(values.slides, Array.isArray(ep.slides) ? ep.slides.length : 0);
+      const res = await buildPrompts(dir, {
+        revision,
+        attempt,
+        slides,
+        force: values.force,
+        override: values.override,
+        styleRef: values['style-ref'],
+      });
       console.log(JSON.stringify(res, null, 2));
-    } else if (cmd === 'status' && dir) {
-      const revision = flag('--revision') ?? 'r01';
+    } else if (cmd === 'status') {
+      const revision = values.revision ?? 'r01';
       console.log(JSON.stringify(await episodeStatus(dir, { revision }), null, 2));
-    } else if (cmd === 'finalize' && dir) {
-      const revision = flag('--revision') ?? 'r01';
+    } else if (cmd === 'finalize') {
+      const revision = values.revision ?? 'r01';
       console.log(JSON.stringify(await finalizeEpisode(dir, { revision }), null, 2));
     } else {
-      console.error('Usage: node scripts/episode-tools.mjs <validate|build-prompts|status|finalize> EPISODE_DIR [--revision r01] [--attempt a1] [--slides 1,2-5] [--force]');
-      process.exitCode = 1;
+      throw new Error(`Unknown command "${cmd}". Expected validate|build-prompts|status|finalize`);
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

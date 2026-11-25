@@ -121,7 +121,9 @@ WORKFLOW. Giữ dữ liệu lỗi/unknown và mọi file còn là nguồn/nhân 
 - `failed`: HTTP từ chối xác định; giữ response để xem lỗi an toàn. Không tự
   đổi model, thêm tài khoản hay retry.
 - `in_flight`/`unknown`: request có thể đã được xử lý (kể cả timeout, mất kết
-  nối, HTTP 5xx/408); dừng, kiểm tra server trước khi gửi lại. Không tự retry.
+  nối, HTTP 5xx/408); dừng, kiểm tra server trước khi gửi lại. Wrapper chặn tạo
+  attempt mới cho cùng slide khi còn `unknown`/`in_flight`; chỉ sau khi đối soát
+  xong mới chạy `node scripts/draw-image.mjs --reconcile DRAFT_DIR --resolution reconciled_failed|reconciled_superseded --note "..."`. Không tự retry.
 - `normalize_failed`/`received`: response đã lưu nhưng chuyển đổi chưa xong;
   sửa vấn đề cục bộ rồi xử lý **file đã có**, không gọi lại API:
 
