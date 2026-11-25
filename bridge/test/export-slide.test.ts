@@ -168,6 +168,10 @@ test('binds v2 checkpoint to episode content, rejects untracked/unknown/stale dr
 
   // 7. Carry-forward unchanged slide 1 from r01 to r02 succeeds, and fails if slide 1 text changes!
   const outR2 = join(root, 'output', 'r02', '001.jpg');
+  const wrongDestination = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', '--carry-forward', '--slide', '1', outR1, join(dirname(outR2), '002.jpg'), 'Checked'], { encoding: 'utf8' });
+  assert.equal(wrongDestination.status, 1);
+  assert.match(wrongDestination.stderr, /--slide must match the output filename/);
+  await assert.rejects(readdir(dirname(outR2)), { code: 'ENOENT' });
   const cfOk = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', '--carry-forward', outR1, outR2, 'Giữ nguyên từ r01'], { encoding: 'utf8' });
   assert.equal(cfOk.status, 0, cfOk.stderr);
   const ckR2 = JSON.parse(await readFile(join(root, 'output', 'r02', 'checks', '001.jpg.json'), 'utf8'));
@@ -197,13 +201,22 @@ test('explicit import of a legacy snapshot does not invent a request hash and ca
   const episodePath = join(root, 'episode.json');
   await writeFile(episodePath, JSON.stringify(episode));
   await writeFile(join(dirname(source), 'episode.json'), JSON.stringify(episode));
-  const checked = (option: string, from: string, to: string) => spawnSync(process.execPath,
-    ['scripts/export-slide.mjs', '--checked', option, from, to, 'Đã xem lại và đối chiếu'], { encoding: 'utf8' });
+  const checked = (option: string, from: string, to: string, ...flags: string[]) => spawnSync(process.execPath,
+    ['scripts/export-slide.mjs', '--checked', option, ...flags, from, to, 'Đã xem lại và đối chiếu'], { encoding: 'utf8' });
+  const wrongRevision = checked('--import-legacy', source, r02, '--revision', 'r03');
+  assert.equal(wrongRevision.status, 1);
+  assert.match(wrongRevision.stderr, /--revision must match the output directory/);
+  await assert.rejects(readdir(dirname(r02)), { code: 'ENOENT' });
+  const offRevisionPath = join(root, 'staging', 'r02', '001.jpg');
+  const offRevision = checked('--import-legacy', source, offRevisionPath, '--episode', episodePath);
+  assert.equal(offRevision.status, 1);
+  assert.match(offRevision.stderr, /episode's output directory/);
+  await assert.rejects(readdir(dirname(offRevisionPath)), { code: 'ENOENT' });
   assert.equal(checked('--carry-forward', source, r02).status, 1);
   await writeFile(episodePath, JSON.stringify({ ...episode, slides: [{ ...episode.slides[0], text: 'Nội dung đã sửa.' }] }));
   assert.match(checked('--import-legacy', source, r02).stderr, /content changed/);
   await writeFile(episodePath, JSON.stringify(episode));
-  const imported = checked('--import-legacy', source, r02);
+  const imported = checked('--import-legacy', source, r02, '--revision', 'r02', '--slide', '1');
   assert.equal(imported.status, 0, imported.stderr);
   const ck = JSON.parse(await readFile(join(dirname(r02), 'checks', '001.jpg.json'), 'utf8'));
   assert.equal(ck.request_sha256, null);

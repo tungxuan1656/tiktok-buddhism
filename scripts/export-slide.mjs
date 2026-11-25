@@ -9,9 +9,9 @@ import { checkpointIssue, isSha256, readEpisodeJson, readImageInfo, validateEpis
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 async function resolveBoundContext(draftPath, outputPath, explicitEpisode, explicitRevision, explicitSlide, carryForward, importLegacy) {
+  const outDir = dirname(resolve(outputPath));
   let episodePath = explicitEpisode ? resolve(explicitEpisode) : null;
   if (!episodePath) {
-    const outDir = dirname(resolve(outputPath));
     if (basename(dirname(outDir)) === 'output') {
       const candidate = resolve(outDir, '..', '..', 'episode.json');
       const st = await lstat(candidate).catch(() => null);
@@ -24,6 +24,19 @@ async function resolveBoundContext(draftPath, outputPath, explicitEpisode, expli
   }
 
   const epDir = dirname(episodePath);
+  const revision = basename(outDir);
+  if (!isSafeRevision(revision) || outDir !== resolve(epDir, 'output', revision)) {
+    throw new Error('Checked export must use the episode\'s output directory: output/rNN/NNN.jpg (or .jpeg/.png)');
+  }
+  if (explicitRevision !== undefined && explicitRevision !== revision) {
+    throw new Error('--revision must match the output directory');
+  }
+  const numMatch = /^(\d{3})\.(?:jpg|jpeg|png)$/.exec(basename(outputPath));
+  const slide = numMatch ? Number(numMatch[1]) : NaN;
+  if (explicitSlide !== undefined && Number(explicitSlide) !== slide) {
+    throw new Error('--slide must match the output filename');
+  }
+
   const realEpPath = await realpath(episodePath);
   await confineExistingPath([epDir], draftPath, { requireRegularFile: true });
   await confineTargetPath(epDir, outputPath);
@@ -33,10 +46,6 @@ async function resolveBoundContext(draftPath, outputPath, explicitEpisode, expli
     throw new Error(`Episode validation failed before export: ${validation.issues.join('; ')}`);
   }
 
-  const revision = explicitRevision ?? basename(dirname(resolve(outputPath)));
-  if (!isSafeRevision(revision)) throw new Error(`Invalid revision "${revision}" for checkpoint binding`);
-  const numMatch = /^(\d{3})\.(?:jpg|jpeg|png)$/i.exec(basename(outputPath));
-  const slide = explicitSlide !== undefined ? Number(explicitSlide) : (numMatch ? Number(numMatch[1]) : NaN);
   if (!Number.isSafeInteger(slide) || slide < 1 || slide > ep.slides.length) {
     throw new Error(`Cannot determine valid slide index for output ${outputPath}`);
   }
