@@ -113,9 +113,15 @@ Không gửi toàn bộ nguồn khi chỉ cần chữ của một trang. Bố c�
 nội dung, không bắt buộc tỷ lệ vùng chữ/tranh hoặc vị trí trên/dưới cố định;
 ưu tiên tranh và chữ đầy đủ, rõ ràng, dễ đọc.
 
-Tạo từng trang rồi **mở ảnh ngay** để tránh nhân lỗi qua cả tập. Lưu request,
-prompt, phản hồi gốc, MIME/kích thước thật và ảnh vào drafts. Điền đường dẫn
-ảnh vào `image` trong episode.json. Không để AI tự sửa chữ để vừa bố cục.
+- **Kiểm tra mẫu trước, vẽ theo lô sau**:
+  1. Chạy `node scripts/episode-tools.mjs validate EPISODE_DIR` (lưu ý với tập `verbatim` có bìa/lời bình, gắn rõ `role` `cover`/`quote`/`commentary`/`closing` hoặc `source.exact_join_first_slide`). Các lệnh `build-prompts`, `draw-image.mjs` và `finalize` đều tự chạy lại cổng kiểm tra chung này.
+  2. Chạy `node scripts/episode-tools.mjs build-prompts EPISODE_DIR --revision r01` để tự động sinh `prompts/001-r01.txt`… và `prompts/batch-r01.json` gắn fingerprint. Nếu sửa `episode.json` sau khi build, bắt buộc chạy lại với `--force` (hoặc `--override` nếu chỉ sửa tay prompt mà nội dung kịch bản không đổi).
+  3. Vẽ và mở kiểm tra **slide 1 trước** vào đúng `drafts/001-r01-a1` (khớp `batch-r01.json`, kể cả thứ tự ảnh phong cách và mẫu nhân vật; xem [lệnh mẫu](references/painter-local-api.md#một-lệnh-cho-mỗi-lượt-tạosửa)) để chốt phong cách, kiểu chữ và nhân vật.
+  4. Khi slide 1 đạt, chạy `node scripts/draw-image.mjs --batch EPISODE_JSON prompts/batch-r01.json` (script chỉ bỏ qua draft đã `succeeded` khớp fingerprint `request_sha256` và SHA-256 ảnh; chặn trùng slide và dừng ngay nếu gặp `unknown`/`in_flight`).
+  5. Với attempt `unknown`/`in_flight`, dừng và đối soát server trước khi chạy `node scripts/draw-image.mjs --reconcile DRAFT_DIR --resolution reconciled_failed|reconciled_superseded --note "..."`. Nếu status là `received`/`normalize_failed` và có hash của response, dùng `node scripts/draw-image.mjs --normalize DRAFT_DIR/response.bin` để phục hồi attempt gốc, không vẽ lại.
+  6. Khi cần xem tiến độ hoặc tiếp tục tập bị ngắt, chạy `node scripts/episode-tools.mjs status EPISODE_DIR`.
+- Lưu request, prompt, phản hồi gốc, MIME/kích thước thật và ảnh vào drafts.
+  Điền đường dẫn ảnh vào `image` trong episode.json. Không để AI tự sửa chữ để vừa bố cục.
 
 ## 5. Đọc ảnh và sửa có mục tiêu
 
@@ -144,14 +150,42 @@ từ pixel. Giữ văn bản gốc trong repo, không tuyên bố kiểm tra ả
 ## 6. Xuất file và bàn giao
 
 Wrapper đã xuất JPEG95 1080 × 1440, chỉ fit + padding, không thêm chữ bằng
-phần mềm, không crop hoặc kéo méo. Sau khi kiểm tra chữ, dùng
-[`scripts/export-slide.mjs`](scripts/export-slide.mjs) theo [hướng dẫn xuất](references/painter-local-api.md#kiểm-tra-và-xuất-revision)
-để chép nguyên bytes ảnh đạt sang output, không mã hóa lại. Mở lại **từng ảnh cuối**
-để chắc không mờ/chặt chữ. Nếu đích đã có và khớp từng byte, xác nhận phần ghi
-nhận còn thiếu trong `episode.json` và `notes.md`, rồi chuyển sang trang thiếu
-tiếp theo; không lặp dòng kiểm tra đã có. Nếu ảnh đích khác bytes, giữ cả hai
-bản và đối chiếu đúng draft/revision, không ghi đè. Không nén lại PNG cũ; giữ
-bản trước khi bản thay thế chưa được gửi đủ hoặc còn lỗi.
+phần mềm, không crop hoặc kéo méo. Sau khi kiểm tra chữ đạt ở bước 5, dùng
+[`scripts/export-slide.mjs`](scripts/export-slide.mjs) với cờ `--checked` theo
+[hướng dẫn xuất](references/painter-local-api.md#kiểm-tra-và-xuất-revision)
+để chép nguyên bytes ảnh đạt sang output, đối chiếu SHA-256 và lưu biên bản
+`output/rNN/checks/TÊN_ẢNH.json` trong một lệnh (có thể xuất cả lô đã kiểm tra
+trong một lệnh bash):
+
+```bash
+node scripts/export-slide.mjs --checked DRAFT_IMAGE OUTPUT_IMAGE "ghi chú kiểm tra"
+# Mang nguyên ảnh đã kiểm tra của trang không đổi sang revision mới:
+node scripts/export-slide.mjs --checked --carry-forward EPISODE_DIR/output/r01/001.jpg EPISODE_DIR/output/r02/001.jpg "Giữ nguyên từ r01"
+```
+
+Ảnh cũ chưa từng có checkpoint gắn với kịch bản: mở lại và đối chiếu đầy đủ với kịch bản và
+mẫu hiện hành, rồi dùng `--checked --import-legacy` thay cho `--carry-forward`
+trong lệnh trên. Cần snapshot gốc trỏ đúng ảnh và trang không đổi. Biên bản
+ghi nguồn cũ, không giả lập request hash. Các revision sau dùng lại biên bản
+này như bình thường khi ảnh và kịch bản còn khớp.
+
+Sau khi xuất đủ các trang của revision, chạy:
+
+```bash
+node scripts/episode-tools.mjs finalize EPISODE_DIR --revision r01
+```
+
+Lệnh `finalize` kiểm tra đủ ảnh + biên bản trong `output/rNN/checks/` khớp
+SHA-256, cập nhật `slides[].image`, đặt `ready_for_review` và lưu snapshot
+`output/rNN/episode.json`.
+
+Nếu byte ảnh cuối khớp ảnh đã đối chiếu qua `--checked` và biên bản vẫn đúng
+với kịch bản/snapshot, **không mở lại ảnh cuối** chỉ vì nó đã được xuất. Nếu
+đích đã có và khớp từng byte, xác nhận phần ghi nhận còn thiếu trong
+`episode.json` và `notes.md`, rồi chuyển sang trang thiếu tiếp theo; không lặp
+dòng kiểm tra đã có. Nếu ảnh đích khác bytes, giữ cả hai bản và đối chiếu đúng
+draft/revision, không ghi đè. Không nén lại PNG cũ; giữ bản trước khi bản thay
+thế chưa được gửi đủ hoặc còn lỗi.
 
 Lưu `output/r01/001.jpg`… và snapshot `episode.json` của revision. Ghi kết quả
 tự kiểm tra/giới hạn vào notes, đặt `ready_for_review` chỉ khi đủ trang đã đạt.
@@ -162,10 +196,11 @@ bridge kiểm tra rồi gửi album ảnh về đúng private chat chủ bot; Te
 thể nén ảnh, `/files` gửi nguyên JPEG/PNG đã chốt, không phải response API thô. Không dùng việc gửi thành công hoặc
 agent_settled làm bằng chứng đã đạt chất lượng.
 
-Người dùng sửa: tạm giữ bản cũ, chỉ tạo lại trang cần sửa, dùng cùng references,
-xuất revision mới. Text đổi thì cần sửa ảnh vì chữ do model tạo, không có bước
-chèn chữ riêng. Người dùng xác nhận thì ghi `approved` cho **đúng revision**
-trong notes. Duyệt tập không tự đồng nghĩa duyệt mọi mẫu nhân vật. Không tự đăng.
+Người dùng sửa: tạm giữ bản cũ, chỉ mở và tạo lại đúng trang cần sửa (không đọc
+lại toàn bộ ảnh các trang không đổi), dùng cùng references, xuất revision mới.
+Text đổi thì cần sửa ảnh vì chữ do model tạo, không có bước chèn chữ riêng.
+Người dùng xác nhận thì ghi `approved` cho **đúng revision** trong notes.
+Duyệt tập không tự đồng nghĩa duyệt mọi mẫu nhân vật. Không tự đăng.
 
 ## 7. Lưu tối thiểu sau bàn giao Telegram
 

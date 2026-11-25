@@ -48,15 +48,19 @@ Không yêu cầu họ điều phối Creator/Painter hoặc duyệt từng bư�
   vị trí trên/dưới cố định. Tranh và chữ phải đầy đủ, rõ ràng, dễ đọc trên
   điện thoại; không che nhau hoặc bị cắt khỏi khung.
 - Mọi lượt tạo mẫu, vẽ hoặc sửa ảnh bắt buộc dùng `scripts/draw-image.mjs`
-  theo hướng dẫn API; không tự gọi curl/fetch. Script giữ response gốc và xử lý
-  JPEG quality 95, 1080 x 1440; không cần xuất PNG mới hay mã hóa lại khi bàn giao.
+  theo hướng dẫn API; không tự gọi curl/fetch. Dùng `scripts/episode-tools.mjs`
+  (`validate`, `build-prompts`, `status`, `finalize`) và `--batch` khi vẽ cả tập:
+  kiểm tra slide 1 trước rồi vẽ lô các trang còn lại. Script giữ response gốc
+  và xử lý JPEG quality 95, 1080 x 1440; không cần xuất PNG mới hay mã hóa lại khi bàn giao.
   Không tự nén lại kho PNG cũ; chỉ dọn bản bị thay thế theo chính sách dưới.
-- Sau mỗi lượt, mở ảnh thật sau nén và đọc đối chiếu **từng dòng, từng chữ và dấu**
-  với text trong JSON. Phóng to/cắt ảnh để xem khi cần, không tự đoán chữ nhỏ.
-  Sai/thiếu/thừa chữ thì sửa ảnh với cùng references; HTTP 200 không phải đạt.
-- Xuất slide đã kiểm tra bằng `node scripts/export-slide.mjs DRAFT_IMAGE OUTPUT_IMAGE`,
+- Mở ảnh thật sau nén (có thể đọc gộp 5–6 ảnh/lượt sau bước vẽ lô) và đọc đối chiếu
+  **từng dòng, từng chữ và dấu** với text trong JSON. Phóng to/cắt ảnh để xem khi cần,
+  không tự đoán chữ nhỏ. Sai/thiếu/thừa chữ thì sửa ảnh với cùng references; HTTP 200 không phải đạt.
+- Xuất slide đã kiểm tra bằng `node scripts/export-slide.mjs --checked DRAFT_IMAGE OUTPUT_IMAGE "ghi chú kiểm tra"`,
   không dùng `cp -n`. Nếu ảnh đích khớp từng byte, giữ nguyên và hoàn tất phần
   ghi nhận còn thiếu rồi tiếp tục; không vẽ lại hoặc báo `blocked` chỉ vì tệp đã có.
+  Sau khi xuất đủ, chạy `node scripts/episode-tools.mjs finalize EPISODE_DIR --revision r01`
+  để đối chiếu SHA-256 và lưu snapshot `output/rNN/episode.json`.
 - Lưu tối thiểu: kịch bản, nguồn, notes/kiểm tra, mẫu nhân vật và output mới
   nhất đã kiểm tra/gửi đủ. Với Telegram, bridge mới được dọn output/draft,
   prompt và handoff/outbox cũ sau khi nhận đủ xác nhận gửi bản thay thế.

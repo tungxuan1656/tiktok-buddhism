@@ -6,8 +6,6 @@ import { eventLine } from './trace.ts';
 import { BOT_MODEL } from './model.ts';
 
 const EXTENSIONS = [
-  ['git:github.com/microsoft/TokenEconomizer', 'git/github.com/microsoft/TokenEconomizer/plugin/pi/tokeneconomizer.ts'],
-  ['npm:billion-context', 'npm/node_modules/billion-context/dist/agent/billion-context.js'],
   ['npm:pi-web-access', 'npm/node_modules/pi-web-access/dist/index.js'],
 ] as const;
 

@@ -6,6 +6,7 @@
   "source": null,
   "slides": [
     {
+      "role": "quote",
       "text": "{Nội dung cuối của slide}",
       "scene": "{Một hành động chính, vị trí nhân vật và vật thể}",
       "scene_type": "concept",

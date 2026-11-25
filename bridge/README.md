@@ -31,30 +31,28 @@ chmod 600 .env
 6. Chờ tin “Mình sẵn sàng rồi” trên điện thoại, rồi nhắn nội dung muốn làm.
 
 Bot được ghim vào **`cx/gpt-6.2-sol`**, provider **`9router`**, thinking
-**`high`**; không dùng `PI_MODEL` hoặc model mặc định để chọn ngầm.
+**`medium`**; không dùng `PI_MODEL` hoặc model mặc định để chọn ngầm.
 [model.ts](model.ts) áp dụng model và mức suy luận có sẵn cho session bot,
 không bổ sung hay sửa metadata model. Giữ nguyên endpoint, auth, các model
 khác và mặc định Pi toàn cục; không thay provider. Mỗi lần mở session, RPC
-phải xác nhận đúng model và `high`, sai thì dừng trước prompt, không tự hạ
+phải xác nhận đúng model và `medium`, sai thì dừng trước prompt, không tự thay
 mức suy luận. `npm run check` in lựa chọn hiệu lực này, không chứng minh
-upstream đã chấp nhận một request thực với `high`.
+upstream đã chấp nhận một request thực với `medium`.
 
 Bridge tắt extension, MCP, skill và prompt template tự nạp. Pi RPC nạp đích danh
-`bridge/model.ts` và ba extension dưới đây từ thư mục agent Pi, ngoài các tool
+`bridge/model.ts` và extension `pi-web-access` từ thư mục agent Pi, ngoài các tool
 cơ bản `read/bash/edit/write`. Nếu thiếu, cài bằng Pi trên cùng máy/chủ tài khoản
 chạy bridge; bridge không tự cài hoặc cập nhật package khi khởi động.
 
 ```sh
-pi install git:github.com/microsoft/TokenEconomizer
-pi install npm:billion-context
 pi install npm:pi-web-access
 ```
 
 AGENTS.md và hướng dẫn bàn giao vẫn được nạp. Bridge chuyển yêu cầu bằng chữ
 và đường dẫn, không lọc ảnh hay đặt giới hạn dung lượng ngữ cảnh riêng. Pi tự
-chọn công cụ và tệp cần đọc; Pi và các extension đã nạp quản lý ngữ cảnh.
-Pi child không nhận giá trị biến `TELEGRAM_*`. Bridge không thay đổi cấu hình
-Pi khi bạn chạy trực tiếp.
+chọn công cụ và tệp cần đọc; Pi tự quản lý ngữ cảnh theo mặc định, bridge không
+nạp extension nén ngữ cảnh hay lọc ảnh riêng. Pi child không nhận giá trị biến
+`TELEGRAM_*`. Bridge không thay đổi cấu hình Pi khi bạn chạy trực tiếp.
 
 Bot chỉ chấp nhận đồng thời `from.id == chat.id == TELEGRAM_USER_ID` và
 `chat.type == private`; nhóm, người lạ, bot khác không được giao việc. Bot
@@ -261,7 +259,7 @@ mục tạm; không gọi Telegram, model hoặc API tạo ảnh. Bao phủ priv
 nhận trùng, session/task, revision, hủy/khởi động lại, upload chưa rõ, resend,
 đường dẫn/symlink, file ảnh, đóng băng outbox, khóa tiến trình đồng thời và trace
 10 dòng (quyền truy cập, gộp/edit tin nhắn, ẩn nội dung nhạy cảm, lỗi mạng),
-mức suy luận `high` chỉ trong session bot, không sửa metadata/provider/mặc định;
+mức suy luận `medium` (`BOT_MODEL.thinking`) chỉ trong session bot, không sửa metadata/provider/mặc định;
 không đăng ký bộ lọc ngữ cảnh riêng trong extension của bridge, lỗi model trước settlement,
 thông báo lỗi đã lọc và deadline 2 giờ.
 Wrapper được thử với HTTP giả cục bộ và ImageMagick thật: request/reference

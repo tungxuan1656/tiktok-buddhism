@@ -2,8 +2,10 @@
 
 Bridge Telegram nhận yêu cầu và gửi kết quả. Pi tự thực hiện công việc, chọn công cụ và quyết định cần đọc hay ghi gì theo AGENTS.md và WORKFLOW.md. Không yêu cầu người dùng điều phối từng bước.
 
-## Quyền và dữ liệu
+## Quyền, dữ liệu và tiết kiệm ngữ cảnh
 
+- `AGENTS.md` và file này đã được nạp sẵn vào ngữ cảnh/system prompt: không cần `read` lại hai file đó. Khi cần tra cứu tài liệu (`WORKFLOW.md`, `references/style.md`, `references/painter-local-api.md`), đọc gộp trong một lượt thay vì đọc lẻ từng file.
+- Dùng `node scripts/episode-tools.mjs validate|build-prompts|status|finalize` và `node scripts/draw-image.mjs --batch` thay cho viết script rời hoặc lặp từng trang. Vẽ và kiểm tra slide 1 trước vào `drafts/001-r01-a1` (khớp `batch-r01.json`), rồi chạy `--batch`, `read` gộp 5–6 ảnh/lượt, xuất bằng `export-slide.mjs --checked` để không phải `read` lại ảnh `output/` khi SHA-256 khớp, và chạy `finalize` để lưu snapshot `output/rNN/episode.json`. Khi sửa tập cũ, chỉ `read` đúng trang cần sửa.
 - Bridge đã xác thực người dùng ở private chat. File request.json do bridge chỉ định chứa `user_message` là yêu cầu nội dung, `task_id`, `run_id`, `episode_dir` và `previous_state` là dữ liệu định tuyến. Không tự thay các ID hay thư mục này.
 - Làm toàn bộ tập trong `episode_dir`. Tin nhắn tiếp theo mặc định sửa cùng tập. Mỗi lượt hoàn thành dùng revision mới r01, r02...; không ghi đè bản đang cần phục hồi. Sau khi bản mới đã gửi đủ, bridge tự dọn bản bị thay thế theo chính sách lưu tối thiểu. `/done` kết thúc tập và mở session mới; `/new` tạm cất tập; `/episodes` mở lại đúng session của tập chưa kết thúc. Bridge xử lý các lệnh này.
 - Không có số slide mặc định: chia theo đúng nội dung, đầy đủ và dễ đọc. Mỗi tập/revision hoàn chỉnh tối đa 35 ảnh (giới hạn một bài TikTok), kể cả bìa/trang kết nếu có. Đếm ngay khi lập kịch bản, trước mọi lượt vẽ; không cố tạo đủ trần. Nếu nội dung không vừa mà vẫn dễ đọc và đúng nguồn, ghi needs_input để chốt phạm vi/chia nhiều tập, không cắt lời trích hoặc bỏ ảnh cho vừa trần.

@@ -14,7 +14,11 @@ Không tạo bản kịch bản thứ hai trong chat nếu đã lưu đủ ở e
    văn thành các đoạn liên tiếp, không sửa/bỏ chữ để ép số trang. Nếu không
    vừa 35 ảnh mà vẫn dễ đọc, báo cần chia nhiều tập và hỏi phạm vi, không
    tự cắt nội dung, thu nhỏ chữ hoặc vượt trần.
-3. Mỗi trang viết text cuối, một cảnh ít chi tiết, scene_type và evidence.
+3. Mỗi trang viết `text` cuối, một cảnh ít chi tiết, `scene_type`, `evidence`
+   và nên gắn rõ `role` (`cover` | `quote` | `commentary` | `closing`);
+   với tập `verbatim` có bìa/lời bình xen kẽ, bắt buộc gắn `role` (và có thể
+   gắn `source_start`/`source_end` theo ký tự trong `source.txt`) để validator
+   đối chiếu nguyên văn chính xác tuyệt đối, không bỏ ngầm trang đầu.
    evidence chỉ rõ căn cứ đoạn nguồn, hoặc ghi minh họa/ẩn dụ/hư cấu do Pi đề xuất.
    `text` là nội dung để đăng cho người xem, không phải lời nói với chủ bot.
    Áp dụng cổng biên tập trong WORKFLOW: không in nhãn quản lý như "Tập 1 -

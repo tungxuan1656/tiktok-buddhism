@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -69,4 +69,171 @@ test('refuses different bytes and a symlink without overwriting either', async t
   await symlink(draft, alias);
   assert.equal(cli(draft, alias).status, 1);
   assert.deepEqual(await readFile(draft), bytes);
+});
+
+test('binds v2 checkpoint to episode content, rejects untracked/unknown/stale drafts, and supports carry-forward', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'export-bound-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'drafts', '001-r01-a1'), { recursive: true });
+  await mkdir(join(root, 'drafts', '002-r01-a1'), { recursive: true });
+  const d1 = join(root, 'drafts', '001-r01-a1', 'image.jpg');
+  const d2 = join(root, 'drafts', '002-r01-a1', 'image.jpg');
+  execFileSync('magick', ['-size', '1080x1440', 'xc:white', '-quality', '95', d1]);
+  execFileSync('magick', ['-size', '1080x1440', 'xc:ivory', '-quality', '95', d2]);
+  const b1 = await readFile(d1);
+  const h1 = createHash('sha256').update(b1).digest('hex');
+
+  const epPath = join(root, 'episode.json');
+  await writeFile(epPath, JSON.stringify({
+    mode: 'original',
+    slides: [
+      { text: 'Slide 1', scene: 'Cảnh 1', scene_type: 'concept', characters: [] },
+      { text: 'Slide 2', scene: 'Cảnh 2', scene_type: 'concept', characters: [] },
+    ],
+  }));
+  const { validateEpisodeData } = await import('../../scripts/lib/schema.mjs' as string);
+  const val = await validateEpisodeData(JSON.parse(await readFile(epPath, 'utf8')), root, { stage: 'finalize' });
+
+  // 1. Untracked draft (missing status.json) must fail!
+  const untracked = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', d1, join(root, 'output', 'r01', '001.jpg'), 'ok'], { encoding: 'utf8' });
+  assert.equal(untracked.status, 1);
+  assert.match(untracked.stderr, /missing required status\.json/);
+
+  // 2. Draft in `unknown` state must fail!
+  await writeFile(join(root, 'drafts', '001-r01-a1', 'status.json'), JSON.stringify({
+    state: 'unknown',
+    plan: { file: epPath, slide: 1, character: false },
+    slide_content_sha256: val.slideFingerprints[0],
+    request_sha256: 'a'.repeat(64),
+    output: { sha256: h1 },
+  }));
+  const unknownDraft = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', d1, join(root, 'output', 'r01', '001.jpg'), 'ok'], { encoding: 'utf8' });
+  assert.equal(unknownDraft.status, 1);
+  assert.match(unknownDraft.stderr, /expected "succeeded"/);
+
+  // 3. Draft missing request_sha256 must fail!
+  await writeFile(join(root, 'drafts', '001-r01-a1', 'status.json'), JSON.stringify({
+    state: 'succeeded',
+    plan: { file: epPath, slide: 1, character: false },
+    slide_content_sha256: val.slideFingerprints[0],
+    output: { sha256: h1 },
+  }));
+  const noReqHash = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', d1, join(root, 'output', 'r01', '001.jpg'), 'ok'], { encoding: 'utf8' });
+  assert.equal(noReqHash.status, 1);
+  assert.match(noReqHash.stderr, /missing valid request_sha256/);
+
+  // 4. Stale slide fingerprint must fail!
+  await writeFile(join(root, 'drafts', '001-r01-a1', 'status.json'), JSON.stringify({
+    state: 'succeeded',
+    plan: { file: epPath, slide: 1, character: false },
+    slide_content_sha256: '0'.repeat(64),
+    request_sha256: 'a'.repeat(64),
+    output: { sha256: h1 },
+  }));
+  const staleRes = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', d1, join(root, 'output', 'r01', '001.jpg'), 'ok'], { encoding: 'utf8' });
+  assert.equal(staleRes.status, 1);
+  assert.match(staleRes.stderr, /missing or stale/);
+
+  // 5. Wrong slide draft (slide 2 exported as 001.jpg) must fail!
+  await writeFile(join(root, 'drafts', '002-r01-a1', 'status.json'), JSON.stringify({ state: 'succeeded', plan: { file: epPath, slide: 2, character: false } }));
+  const wrongSlide = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', d2, join(root, 'output', 'r01', '001.jpg'), 'ok'], { encoding: 'utf8' });
+  assert.equal(wrongSlide.status, 1);
+  assert.match(wrongSlide.stderr, /belongs to slide 2/);
+
+  // 6. Valid export produces bound schema_version 2 checkpoint.
+  await writeFile(join(root, 'drafts', '001-r01-a1', 'status.json'), JSON.stringify({
+    state: 'succeeded',
+    plan: { file: epPath, slide: 1, character: false },
+    slide_content_sha256: val.slideFingerprints[0],
+    request_sha256: 'a'.repeat(64),
+    output: { sha256: h1 },
+  }));
+  const draftBytes = await readFile(d1);
+  await writeFile(d1, await readFile(d2));
+  const mismatched = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', d1, join(root, 'output', 'r01', '001.jpg'), 'ok'], { encoding: 'utf8' });
+  assert.equal(mismatched.status, 1);
+  assert.match(mismatched.stderr, /image SHA-256 mismatch/);
+  await writeFile(d1, draftBytes);
+  const outR1 = join(root, 'output', 'r01', '001.jpg');
+  const ok = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', d1, outR1, 'Đã kiểm tra'], { encoding: 'utf8' });
+  assert.equal(ok.status, 0, ok.stderr);
+  const ck = JSON.parse(await readFile(join(root, 'output', 'r01', 'checks', '001.jpg.json'), 'utf8'));
+  assert.equal(ck.schema_version, 2);
+  assert.equal(ck.revision, 'r01');
+  assert.equal(ck.slide, 1);
+  assert.equal(ck.request_sha256, 'a'.repeat(64));
+  assert.equal(ck.image_sha256, ck.sha256);
+  assert.ok(ck.slide_content_sha256);
+  assert.equal(ck.visual_check.passed, true);
+
+  // 7. Carry-forward unchanged slide 1 from r01 to r02 succeeds, and fails if slide 1 text changes!
+  const outR2 = join(root, 'output', 'r02', '001.jpg');
+  const wrongDestination = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', '--carry-forward', '--slide', '1', outR1, join(dirname(outR2), '002.jpg'), 'Checked'], { encoding: 'utf8' });
+  assert.equal(wrongDestination.status, 1);
+  assert.match(wrongDestination.stderr, /--slide must match the output filename/);
+  await assert.rejects(readdir(dirname(outR2)), { code: 'ENOENT' });
+  const cfOk = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', '--carry-forward', outR1, outR2, 'Giữ nguyên từ r01'], { encoding: 'utf8' });
+  assert.equal(cfOk.status, 0, cfOk.stderr);
+  const ckR2 = JSON.parse(await readFile(join(root, 'output', 'r02', 'checks', '001.jpg.json'), 'utf8'));
+  assert.equal(ckR2.revision, 'r02');
+  assert.equal(ckR2.request_sha256, 'a'.repeat(64));
+  assert.equal(ckR2.carried_from.revision, 'r01');
+
+  const epChanged = JSON.parse(await readFile(epPath, 'utf8'));
+  epChanged.slides[0].text = 'Slide 1 đã đổi!';
+  await writeFile(epPath, JSON.stringify(epChanged));
+  const cfStale = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', '--carry-forward', outR1, join(root, 'output', 'r03', '001.jpg'), 'fail'], { encoding: 'utf8' });
+  assert.equal(cfStale.status, 1);
+  assert.match(cfStale.stderr, /Cannot carry forward slide 1/);
+});
+
+
+test('explicit import of a legacy snapshot does not invent a request hash and can be carried forward', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'export-legacy-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const source = join(root, 'output', 'r01', '001.jpg');
+  const r02 = join(root, 'output', 'r02', '001.jpg');
+  const r03 = join(root, 'output', 'r03', '001.jpg');
+  await mkdir(dirname(source), { recursive: true });
+  execFileSync('magick', ['-size', '1080x1440', 'xc:white', source]);
+  const episode = { mode: 'original', revision: 'r01', status: 'ready_for_review',
+    slides: [{ text: 'Một câu.', scene: 'Cảnh', scene_type: 'concept', image: 'output/r01/001.jpg' }] };
+  const episodePath = join(root, 'episode.json');
+  await writeFile(episodePath, JSON.stringify(episode));
+  await writeFile(join(dirname(source), 'episode.json'), JSON.stringify(episode));
+  const checked = (option: string, from: string, to: string, ...flags: string[]) => spawnSync(process.execPath,
+    ['scripts/export-slide.mjs', '--checked', option, ...flags, from, to, 'Đã xem lại và đối chiếu'], { encoding: 'utf8' });
+  const wrongRevision = checked('--import-legacy', source, r02, '--revision', 'r03');
+  assert.equal(wrongRevision.status, 1);
+  assert.match(wrongRevision.stderr, /--revision must match the output directory/);
+  await assert.rejects(readdir(dirname(r02)), { code: 'ENOENT' });
+  const offRevisionPath = join(root, 'staging', 'r02', '001.jpg');
+  const offRevision = checked('--import-legacy', source, offRevisionPath, '--episode', episodePath);
+  assert.equal(offRevision.status, 1);
+  assert.match(offRevision.stderr, /episode's output directory/);
+  await assert.rejects(readdir(dirname(offRevisionPath)), { code: 'ENOENT' });
+  assert.equal(checked('--carry-forward', source, r02).status, 1);
+  await writeFile(episodePath, JSON.stringify({ ...episode, slides: [{ ...episode.slides[0], text: 'Nội dung đã sửa.' }] }));
+  assert.match(checked('--import-legacy', source, r02).stderr, /content changed/);
+  await writeFile(episodePath, JSON.stringify(episode));
+  const imported = checked('--import-legacy', source, r02, '--revision', 'r02', '--slide', '1');
+  assert.equal(imported.status, 0, imported.stderr);
+  const ck = JSON.parse(await readFile(join(dirname(r02), 'checks', '001.jpg.json'), 'utf8'));
+  assert.equal(ck.request_sha256, null);
+  assert.equal(ck.legacy_import.revision, 'r01');
+  const { finalizeEpisode } = await import('../../scripts/episode-tools.mjs' as string);
+  assert.equal((await finalizeEpisode(root, { revision: 'r02' })).ok, true);
+  const r02Bytes = await readFile(r02);
+  execFileSync('magick', ['-size', '1080x1440', 'xc:black', r02]);
+  assert.match(checked('--carry-forward', r02, r03).stderr, /SHA-256 mismatch/);
+  assert.match(checked('--import-legacy', r02, r03).stderr, /already has a bound checkpoint/);
+  await writeFile(r02, r02Bytes);
+  const reuse = checked('--carry-forward', r02, r03);
+  assert.equal(reuse.status, 0, reuse.stderr);
+  assert.deepEqual(await readFile(r03), await readFile(source));
+  assert.equal((await finalizeEpisode(root, { revision: 'r03' })).ok, true);
+  const approved = { ...JSON.parse(await readFile(episodePath, 'utf8')), status: 'approved' };
+  await writeFile(episodePath, JSON.stringify(approved));
+  await assert.rejects(finalizeEpisode(root, { revision: 'r02' }), /Cannot finalize older revision/);
+  assert.deepEqual(JSON.parse(await readFile(episodePath, 'utf8')), approved);
 });
