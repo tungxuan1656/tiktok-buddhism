@@ -1,7 +1,7 @@
-import { lstat, mkdir, readFile, readdir } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, realpath } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { parseArgs } from 'node:util';
+import { isDeepStrictEqual, parseArgs } from 'node:util';
 import {
   computePromptInputFingerprint,
   computeRequestFingerprint,
@@ -20,12 +20,14 @@ import {
 } from './lib/paths.mjs';
 import {
   DEFAULT_STYLE_REL,
+  MAX_ATTEMPTS_PER_SLIDE,
   MAX_REFS,
   MAX_EPISODE_JSON_BYTES,
   REPO_ROOT,
   UNRESOLVED_STATES,
 } from './lib/policy.mjs';
-import { checkpointIssue, readEpisodeJson, readImageInfo, validateEpisodeData } from './lib/schema.mjs';
+import { checkpointIssue, isSha256, readEpisodeJson, readImageInfo, validateEpisodeData } from './lib/schema.mjs';
+import { countsAgainstSlideBudget, draftRevision, findOutputReuse, outputRevisions, outputSlideFiles, readAttemptRecord, readRejection, rejectionPath, statIfPresent } from './lib/resume.mjs';
 
 const pad3 = n => String(n).padStart(3, '0');
 
@@ -288,14 +290,12 @@ export async function episodeStatus(episodeDir, { revision = 'r01' } = {}) {
       if (UNRESOLVED_STATES.has(rec.state)) unresolvedAttempts.push({ draft: d, state: rec.state });
     }
 
-    let imgName = null;
-    let exportState = 'missing';
+    const outputFiles = await outputSlideFiles(dir, revision, num);
+    const relOut = outputFiles.length === 1 ? outputFiles[0] : null;
+    const imgName = relOut?.split('/').at(-1);
+    let exportState = outputFiles.length > 1 ? 'conflict' : 'missing';
     let actualImgHash = null;
-    for (const ext of ['.jpg', '.jpeg', '.png']) {
-      const relOut = join('output', revision, `${pad3(num)}${ext}`);
-      const candidateExists = await lstat(join(dir, relOut)).then(() => true, () => false);
-      if (!candidateExists) continue;
-      imgName = `${pad3(num)}${ext}`;
+    if (relOut) {
       try {
         const checkedOut = await confineRelativeFile(dir, relOut);
         const info = await readImageInfo(checkedOut.real, { requireNormalized1080: true });
@@ -304,10 +304,9 @@ export async function episodeStatus(episodeDir, { revision = 'r01' } = {}) {
       } catch {
         exportState = 'corrupted';
       }
-      break;
     }
 
-    let checkState = 'missing';
+    let checkState = outputFiles.length > 1 ? 'conflict' : 'missing';
     if (imgName) {
       const relCheck = join('output', revision, 'checks', `${imgName}.json`);
       const checkExists = await lstat(join(dir, relCheck)).then(() => true, () => false);
@@ -324,6 +323,9 @@ export async function episodeStatus(episodeDir, { revision = 'r01' } = {}) {
       }
     }
 
+    if (actualImgHash && await readRejection(dir, validation.slideFingerprints[i], actualImgHash)) {
+      checkState = 'rejected';
+    }
     slides.push({
       slide: num,
       draft: latestDraft,
@@ -336,6 +338,135 @@ export async function episodeStatus(episodeDir, { revision = 'r01' } = {}) {
     });
   }
   return { episodeDir: dir, revision, valid: validation.ok, slideCount: slides.length, slides };
+}
+
+export async function rejectImage(episodeDir, file, note) {
+  const dir = resolve(episodeDir);
+  const output = /^output\/r\d{2,}\/(\d{3})\.(?:jpg|jpeg|png)$/.exec(file);
+  const draft = /^drafts\/(\d{3})-r\d{2,}-[a-z0-9-]+\/image\.jpg$/.exec(file);
+  if (!output && !draft) throw new Error('Use an episode-relative output/rNN/NNN.jpg or drafts/NNN-rNN-attempt/image.jpg path');
+  if (!note?.trim() || note.length > 500) throw new Error('Provide a visual rejection note (1-500 characters)');
+  const slide = Number((output ?? draft)[1]);
+  return withEpisodeLock(dir, async () => {
+    const episode = await readEpisodeJson(join(dir, 'episode.json'), dir);
+    const validation = await validateEpisodeData(episode, dir, { stage: 'validate' });
+    if (!validation.ok) throw new Error(`Episode validation failed: ${validation.issues.join('; ')}`);
+    const slideHash = validation.slideFingerprints[slide - 1];
+    if (!slideHash) throw new Error(`Invalid slide ${slide}`);
+    const image = await confineRelativeFile(dir, file);
+    const { sha256 } = await readImageInfo(image.real, { requireNormalized1080: true });
+    const marker = rejectionPath(slideHash, sha256);
+    const priorNote = await readRejection(dir, slideHash, sha256);
+    const record = { image: file, image_sha256: sha256, slide_content_sha256: slideHash, note: note.trim() };
+    if (priorNote !== record.note) {
+      await publishExclusive(await confineTargetPath(dir, marker), Buffer.from(`${JSON.stringify(record)}\n`), 'Rejection checkpoint already exists with different data');
+    }
+    return { slide, marker };
+  });
+}
+
+async function handoffCompletion(dir, revision, episode, retainedFiles) {
+  if (retainedFiles.length !== episode.slides.length) return 'in_progress';
+  const file = join('output', revision, 'episode.json');
+  if (!await statIfPresent(join(dir, file))) return 'finalize';
+  const snapshot = await readEpisodeJson(join(dir, file), dir);
+  const expected = { ...episode, revision, status: 'ready_for_review',
+    slides: episode.slides.map((slide, i) => ({ ...slide, image: retainedFiles[i] })) };
+  if (!isDeepStrictEqual(snapshot, expected)) return 'inspect_snapshot';
+  if (episode.revision === revision && episode.status === 'approved') return 'approved';
+  return isDeepStrictEqual(episode, expected) ? 'ready_for_review' : 'finalize';
+}
+
+// Derive the next actions from disk, not from a possibly interrupted session's summary.
+export async function episodeHandoff(episodeDir, { revision } = {}) {
+  const dir = resolve(episodeDir);
+  const episode = await readEpisodeJson(join(dir, 'episode.json'), dir);
+  const validation = await validateEpisodeData(episode, dir, { stage: 'validate' });
+  if (!validation.ok) throw new Error(`Episode validation failed: ${validation.issues.join('; ')}`);
+  const outputs = await outputRevisions(dir);
+  const draftsDir = await statIfPresent(join(dir, 'drafts'));
+  if (draftsDir && !draftsDir.isDirectory()) throw new Error('Episode drafts must be a real directory');
+  const drafts = new Map();
+  const episodeFile = await realpath(join(dir, 'episode.json'));
+  const names = draftsDir ? await readdir(join(dir, 'drafts')) : [];
+  for (const name of names.sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))) {
+    const path = join(dir, 'drafts', name);
+    if (!(await lstat(path)).isDirectory()) continue;
+    const record = await readAttemptRecord(path, name);
+    if (!record || record.mode === 'normalize' || record.state === 'invalid_input' || record.plan.character) continue;
+    const planFile = await realpath(record.plan.file).catch(error => {
+      if (error.code !== 'ENOENT') throw error;
+      return resolve(record.plan.file);
+    });
+    const { slide } = record.plan;
+    if (planFile !== episodeFile || slide < 1 || slide > episode.slides.length) continue;
+    const rev = draftRevision(name);
+    if (!drafts.has(slide)) drafts.set(slide, []);
+    drafts.get(slide).push({ name, rev, record });
+  }
+  revision ??= [...outputs, ...[...drafts.values()].flat().map(d => d.rev), episode.revision]
+    .filter(isSafeRevision).sort((a, b) => a.localeCompare(b, 'en', { numeric: true })).at(-1) ?? 'r01';
+  if (!isSafeRevision(revision)) throw new Error(`Invalid revision "${revision}" (expected r01, r02...)`);
+
+  const next = {};
+  const retainedFiles = [];
+  for (const [i, fingerprint] of validation.slideFingerprints.entries()) {
+    const slide = i + 1;
+    const attempts = drafts.get(slide) ?? [];
+    let output = await findOutputReuse(dir, slide, fingerprint, revision, outputs);
+    let rejected;
+    if (output?.action === 'repair') {
+      rejected = output;
+      output = undefined;
+    }
+    if (output?.action === 'keep') retainedFiles.push(output.file);
+    const unresolved = attempts.filter(d => UNRESOLVED_STATES.has(d.record.state));
+    const failed = attempts.findLast(d => d.record.state === 'failed' &&
+      (d.rev === revision || d.record.slide_content_sha256 === fingerprint));
+    let draftFile;
+    let damagedDraft;
+    if (!output || output.action === 'review_output') {
+      for (const { name, record } of attempts.toReversed()) {
+        if (record.state !== 'succeeded' || record.slide_content_sha256 !== fingerprint || !isSha256(record.request_sha256)) continue;
+        const file = `drafts/${name}/image.jpg`;
+        const image = await confineRelativeFile(dir, file).catch(() => null);
+        const info = image && await readImageInfo(image.real, { requireNormalized1080: true }).catch(() => null);
+        if (info && info.sha256 === record.output?.sha256) {
+          const note = await readRejection(dir, fingerprint, info.sha256);
+          if (note) {
+            rejected ??= { file, note };
+            continue;
+          }
+          draftFile = file;
+          break;
+        }
+        damagedDraft ??= `drafts/${name}/status.json`;
+      }
+    }
+    const usedAttempts = attempts.filter(d => countsAgainstSlideBudget(d.name, revision)).length;
+    let action = output?.action ?? 'draw';
+    let file = output?.file;
+    if (!output) {
+      if (draftFile) [action, file] = ['review_draft', draftFile];
+      else if (unresolved.length) action = 'resolve_attempt';
+      else if (usedAttempts >= MAX_ATTEMPTS_PER_SLIDE) action = 'attempt_limit';
+      else if (damagedDraft) [action, file] = ['inspect_draft', damagedDraft];
+      else if (failed) [action, file] = ['failed', `drafts/${failed.name}/status.json`];
+      else if (rejected) [action, file] = ['repair', rejected.file];
+    }
+    let entry = [slide, ...(file ? [file] : [])];
+    if (action === 'keep' || action === 'draw') entry = slide;
+    if (action === 'attempt_limit') entry = [slide, usedAttempts, MAX_ATTEMPTS_PER_SLIDE];
+    if (action === 'output_conflict') entry = [slide, output.targetFiles, output.source];
+    (next[action] ??= []).push(entry);
+    for (const { name, record } of unresolved) {
+      (next.attempts ??= []).push([slide, name, record.state]);
+    }
+    if (action === 'review_output' && draftFile) (next.alternate_draft ??= []).push([slide, draftFile]);
+    if (rejected) (next.rejected ??= []).push([slide, rejected.file, rejected.note]);
+  }
+  const completion = await handoffCompletion(dir, revision, episode, retainedFiles);
+  return { episodeDir: dir, revision, slideCount: episode.slides.length, outputRevisions: outputs, completion, next };
 }
 
 /** Verify exported outputs, image validity, and bound visual-check checkpoints, then immutably commit the revision snapshot. */
@@ -362,22 +493,16 @@ export async function finalizeEpisode(episodeDir, { revision = 'r01' } = {}) {
 
     for (let i = 0; i < ep.slides.length; i++) {
       const num = i + 1;
-      const base = pad3(num);
-      let imgName;
-      let checkedImg;
-      for (const ext of ['.jpg', '.jpeg', '.png']) {
-        const relCandidate = join(outRelDir, `${base}${ext}`);
-        const candidateExists = await lstat(join(dir, relCandidate)).then(() => true, () => false);
-        if (candidateExists) {
-          checkedImg = await confineRelativeFile(dir, relCandidate);
-          imgName = `${base}${ext}`;
-          break;
-        }
-      }
-      if (!imgName || !checkedImg) {
-        throw new Error(`Missing exported image for slide ${num} in output/${revision}/`);
-      }
+      const outputFiles = await outputSlideFiles(dir, revision, num);
+      if (!outputFiles.length) throw new Error(`Missing exported image for slide ${num} in output/${revision}/`);
+      if (outputFiles.length > 1) throw new Error(`Conflicting exported images for slide ${num}: ${outputFiles.join(', ')}`);
+      const [relPath] = outputFiles;
+      const imgName = relPath.split('/').at(-1);
+      const checkedImg = await confineRelativeFile(dir, relPath);
       const imgInfo = await readImageInfo(checkedImg.real, { requireNormalized1080: true });
+      if (await readRejection(dir, validation.slideFingerprints[i], imgInfo.sha256)) {
+        throw new Error(`Cannot finalize rejected image for slide ${num}`);
+      }
       const checkRel = join(outRelDir, 'checks', `${imgName}.json`);
       const checkedCk = await confineRelativeFile(dir, checkRel).catch(() => null);
       if (!checkedCk) {
@@ -387,7 +512,6 @@ export async function finalizeEpisode(episodeDir, { revision = 'r01' } = {}) {
       const check = JSON.parse(await readFile(checkedCk.real, 'utf8'));
       const issue = checkpointIssue(check, { revision, slide: num, image: imgName, imageSha256: imgInfo.sha256, slideSha256: validation.slideFingerprints[i] });
       if (issue) throw new Error(issue);
-      const relPath = `output/${revision}/${imgName}`;
       ep.slides[i].image = relPath;
       files.push(relPath);
     }
@@ -430,11 +554,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
         force: { type: 'boolean', default: false },
         override: { type: 'boolean', default: false },
         'style-ref': { type: 'string' },
+        note: { type: 'string' },
       },
     });
     const [cmd, dir, ...extra] = positionals;
-    if (!cmd || !dir || extra.length) {
-      throw new Error('Usage: node scripts/episode-tools.mjs <validate|build-prompts|status|finalize> EPISODE_DIR [--revision r01] [--attempt a1] [--slides 1,2-5] [--force] [--override] [--style-ref PATH]');
+    if (!cmd || !dir || extra.length !== Number(cmd === 'reject')) {
+      throw new Error('Usage: node scripts/episode-tools.mjs <validate|build-prompts|status|handoff|finalize> EPISODE_DIR [options], or reject EPISODE_DIR IMAGE --note NOTE');
     }
     if (cmd === 'validate') {
       const res = await validateEpisode(dir);
@@ -458,11 +583,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     } else if (cmd === 'status') {
       const revision = values.revision ?? 'r01';
       console.log(JSON.stringify(await episodeStatus(dir, { revision }), null, 2));
+    } else if (cmd === 'handoff') {
+      console.log(JSON.stringify(await episodeHandoff(dir, { revision: values.revision })));
+    } else if (cmd === 'reject') {
+      console.log(JSON.stringify(await rejectImage(dir, extra[0], values.note)));
     } else if (cmd === 'finalize') {
       const revision = values.revision ?? 'r01';
       console.log(JSON.stringify(await finalizeEpisode(dir, { revision }), null, 2));
     } else {
-      throw new Error(`Unknown command "${cmd}". Expected validate|build-prompts|status|finalize`);
+      throw new Error(`Unknown command "${cmd}". Expected validate|build-prompts|status|handoff|reject|finalize`);
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

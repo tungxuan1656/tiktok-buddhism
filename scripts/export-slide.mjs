@@ -5,10 +5,11 @@ import { parseArgs } from 'node:util';
 import { CHECKPOINT_SCHEMA_VERSION, MAX_EPISODE_JSON_BYTES, MAX_IMAGE_BYTES } from './lib/policy.mjs';
 import { confineExistingPath, confineTargetPath, isSafeRevision, publishExclusive } from './lib/paths.mjs';
 import { checkpointIssue, isSha256, readEpisodeJson, readImageInfo, validateEpisodeData } from './lib/schema.mjs';
+import { readRejection } from './lib/resume.mjs';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-async function resolveBoundContext(draftPath, outputPath, explicitEpisode, explicitRevision, explicitSlide, carryForward, importLegacy) {
+async function resolveBoundContext(draftPath, outputPath, explicitEpisode, explicitRevision, explicitSlide, carryForward, importLegacy, recheckLegacy) {
   const outDir = dirname(resolve(outputPath));
   let episodePath = explicitEpisode ? resolve(explicitEpisode) : null;
   if (!episodePath) {
@@ -19,7 +20,7 @@ async function resolveBoundContext(draftPath, outputPath, explicitEpisode, expli
     }
   }
   if (!episodePath) {
-    if (carryForward || importLegacy) throw new Error('Reuse requires an episode context (output/rNN/NNN.jpg or --episode)');
+    if (carryForward || importLegacy || recheckLegacy) throw new Error('Reuse requires an episode context (output/rNN/NNN.jpg or --episode)');
     return null;
   }
 
@@ -52,8 +53,11 @@ async function resolveBoundContext(draftPath, outputPath, explicitEpisode, expli
 
   const imgInfo = await readImageInfo(draftPath, { requireNormalized1080: true });
   const liveSlideFp = validation.slideFingerprints[slide - 1];
+  if (await readRejection(epDir, liveSlideFp, imgInfo.sha256)) {
+    throw new Error(`Cannot export visually rejected image: ${draftPath}`);
+  }
 
-  if (carryForward || importLegacy) {
+  if (carryForward || importLegacy || recheckLegacy) {
     const srcDir = dirname(resolve(draftPath));
     const srcRev = basename(srcDir);
     const srcImgName = basename(draftPath);
@@ -63,20 +67,31 @@ async function resolveBoundContext(draftPath, outputPath, explicitEpisode, expli
     }
     const bound = { epDir, revision, slide, slideContentSha256: liveSlideFp, imageSha256: imgInfo.sha256 };
     const srcCheckPath = join(srcDir, 'checks', `${srcImgName}.json`);
-    if (importLegacy) {
+    if (importLegacy || recheckLegacy) {
+      let priorCheckHash;
       const priorCheck = await lstat(srcCheckPath).catch(error => {
         if (error.code !== 'ENOENT') throw error;
       });
       if (priorCheck) {
         const checked = await confineExistingPath([epDir], srcCheckPath, { requireRegularFile: true });
         if (checked.stat.size > MAX_EPISODE_JSON_BYTES) throw new Error('Legacy checkpoint too large');
-        const checkpoint = JSON.parse(await readFile(checked.real, 'utf8'));
+        const raw = await readFile(checked.real);
+        const checkpoint = JSON.parse(raw);
+        if (checkpoint?.image === srcImgName && checkpoint.sha256 === imgInfo.sha256) priorCheckHash = sha256(raw);
         if ((checkpoint?.schema_version ?? 0) >= CHECKPOINT_SCHEMA_VERSION || checkpoint?.slide_content_sha256 !== undefined) {
           throw new Error('Source already has a bound checkpoint; verify it with --carry-forward');
         }
         if (checkpoint?.sha256 && checkpoint.sha256 !== imgInfo.sha256) throw new Error('Legacy image SHA-256 mismatch');
       }
       const snapshotPath = join(srcDir, 'episode.json');
+      if (recheckLegacy) {
+        if (await lstat(snapshotPath).catch(error => {
+          if (error.code !== 'ENOENT') throw error;
+          return null;
+        })) throw new Error('Legacy snapshot exists; use --import-legacy');
+        if (!priorCheckHash) throw new Error('--recheck-legacy requires a legacy checkpoint with the exact image name and SHA-256');
+        return { ...bound, requestSha256: null, legacyImport: { revision: srcRev, rechecked_from_sha256: priorCheckHash } };
+      }
       const checked = await confineExistingPath([epDir], snapshotPath, { requireRegularFile: true });
       if (checked.stat.size > MAX_EPISODE_JSON_BYTES) throw new Error('Legacy snapshot too large');
       const raw = await readFile(checked.real);
@@ -146,6 +161,7 @@ try {
       checked: { type: 'boolean', default: false },
       'carry-forward': { type: 'boolean', default: false },
       'import-legacy': { type: 'boolean', default: false },
+      'recheck-legacy': { type: 'boolean', default: false },
       episode: { type: 'string' },
       revision: { type: 'string' },
       slide: { type: 'string' },
@@ -154,11 +170,13 @@ try {
   const checked = values.checked;
   const carryForward = values['carry-forward'];
   const importLegacy = values['import-legacy'];
-  if (((carryForward || importLegacy) && !checked) || (carryForward && importLegacy)) {
-    throw new Error('Choose at most one of --carry-forward or --import-legacy and use it with --checked');
+  const recheckLegacy = values['recheck-legacy'];
+  const reuseFlags = [carryForward, importLegacy, recheckLegacy].filter(Boolean).length;
+  if (reuseFlags > 1 || (reuseFlags && !checked)) {
+    throw new Error('Choose at most one of --carry-forward, --import-legacy, or --recheck-legacy and use it with --checked');
   }
   if (positionals.length !== (checked ? 3 : 2) || (checked && !positionals[2].trim())) {
-    throw new Error('Usage: node scripts/export-slide.mjs [--checked] [--carry-forward|--import-legacy] [--episode EPISODE_JSON] [--revision rNN] [--slide N] DRAFT_IMAGE OUTPUT_IMAGE [VISUAL_CHECK_NOTE]');
+    throw new Error('Usage: node scripts/export-slide.mjs [--checked] [--carry-forward|--import-legacy|--recheck-legacy] [--episode EPISODE_JSON] [--revision rNN] [--slide N] DRAFT_IMAGE OUTPUT_IMAGE [VISUAL_CHECK_NOTE]');
   }
   const [draft, output, note] = positionals;
   const draftStat = await lstat(draft);
@@ -168,7 +186,7 @@ try {
   const bytes = await readFile(draft);
   if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw new Error('Invalid draft image size.');
 
-  const bound = checked ? await resolveBoundContext(draft, output, values.episode, values.revision, values.slide, carryForward, importLegacy) : null;
+  const bound = checked ? await resolveBoundContext(draft, output, values.episode, values.revision, values.slide, carryForward, importLegacy, recheckLegacy) : null;
   const hash = sha256(bytes);
   if (bound && bound.imageSha256 !== hash) throw new Error('Draft changed during provenance validation.');
   const dir = dirname(output);

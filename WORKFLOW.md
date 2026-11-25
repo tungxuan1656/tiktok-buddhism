@@ -117,9 +117,12 @@ nội dung, không bắt buộc tỷ lệ vùng chữ/tranh hoặc vị trí tr�
   1. Chạy `node scripts/episode-tools.mjs validate EPISODE_DIR` (lưu ý với tập `verbatim` có bìa/lời bình, gắn rõ `role` `cover`/`quote`/`commentary`/`closing` hoặc `source.exact_join_first_slide`). Các lệnh `build-prompts`, `draw-image.mjs` và `finalize` đều tự chạy lại cổng kiểm tra chung này.
   2. Chạy `node scripts/episode-tools.mjs build-prompts EPISODE_DIR --revision r01` để tự động sinh `prompts/001-r01.txt`… và `prompts/batch-r01.json` gắn fingerprint. Nếu sửa `episode.json` sau khi build, bắt buộc chạy lại với `--force` (hoặc `--override` nếu chỉ sửa tay prompt mà nội dung kịch bản không đổi).
   3. Vẽ và mở kiểm tra **slide 1 trước** vào đúng `drafts/001-r01-a1` (khớp `batch-r01.json`, kể cả thứ tự ảnh phong cách và mẫu nhân vật; xem [lệnh mẫu](references/painter-local-api.md#một-lệnh-cho-mỗi-lượt-tạosửa)) để chốt phong cách, kiểu chữ và nhân vật.
-  4. Khi slide 1 đạt, chạy `node scripts/draw-image.mjs --batch EPISODE_JSON prompts/batch-r01.json` (script chỉ bỏ qua draft đã `succeeded` khớp fingerprint `request_sha256` và SHA-256 ảnh; chặn trùng slide và dừng ngay nếu gặp `unknown`/`in_flight`).
+  4. Khi slide 1 đạt, chạy `node scripts/draw-image.mjs --batch EPISODE_JSON prompts/batch-r01.json` (script bỏ qua output đã kiểm tra trong revision đích hoặc draft `succeeded` khớp fingerprint và SHA-256 ảnh; chặn ảnh có thể dùng lại ở revision khác và attempt chưa rõ kết quả).
   5. Với attempt `unknown`/`in_flight`, dừng và đối soát server trước khi chạy `node scripts/draw-image.mjs --reconcile DRAFT_DIR --resolution reconciled_failed|reconciled_superseded --note "..."`. Nếu status là `received`/`normalize_failed` và có hash của response, dùng `node scripts/draw-image.mjs --normalize DRAFT_DIR/response.bin` để phục hồi attempt gốc, không vẽ lại.
-  6. Khi cần xem tiến độ hoặc tiếp tục tập bị ngắt, chạy `node scripts/episode-tools.mjs status EPISODE_DIR`.
+  6. Khi tiếp tục tập bị ngắt, chạy `node scripts/episode-tools.mjs handoff EPISODE_DIR [--revision rNN]` trước khi vẽ. `keep` giữ nguyên; `carry_forward` chuyển ảnh đã kiểm; `use_newer_revision` kiểm tra revision mới hơn; `review_output`/`review_draft` mở ảnh thật để đối chiếu (`alternate_draft` là ảnh dự phòng).
+     - `output_conflict` trả `[slide, các ảnh đang có ở đích, ảnh đã kiểm hoặc null]`. Đối chiếu các ảnh hoặc chuyển ảnh đã kiểm sang revision trống; không ghi đè và không vẽ lại chỉ vì xung đột. `finalize` yêu cầu đúng một tệp ảnh mỗi slide.
+     - Đọc `attempts`/`resolve_attempt` để đối soát hoặc phục hồi attempt gốc; `failed`/`inspect_draft` cần xem lỗi trước. `attempt_limit` trả `[slide, số lượt đã dùng, giới hạn]`: không lập lô mới trong revision đó. Tạo manifest `build-prompts --slides ...` chỉ cho nhóm `draw`; `repair` sửa riêng sau khi đọc `rejected`, không dùng lô cũ.
+     - `completion: finalize` nghĩa là đã đủ ảnh có biên bản; chạy `finalize` (kể cả khi snapshot đã ghi nhưng kịch bản chưa cập nhật). `inspect_snapshot` cần đối chiếu snapshot trước khi tiếp tục; `ready_for_review` và `approved` không cần vẽ lại. Dùng `status --revision rNN` khi cần chi tiết.
 - Lưu request, prompt, phản hồi gốc, MIME/kích thước thật và ảnh vào drafts.
   Điền đường dẫn ảnh vào `image` trong episode.json. Không để AI tự sửa chữ để vừa bố cục.
 
@@ -138,6 +141,14 @@ với `text`, không kiểm tra dựa vào việc prompt đã gửi đúng:
 - Mặt, tóc, tỷ lệ, y phục đúng mẫu; số người, hành động, tay/chân và bối cảnh đúng.
 - Nếu đọc không chắc, đánh dấu chưa đạt, không tự đoán hoặc coi OCR là chứng cứ
   tuyệt đối. Có thể dùng OCR hỗ trợ nếu sẵn có, nhưng vẫn xem ảnh thật.
+
+Ghi checkpoint ngay sau từng ảnh đã xem, không chờ hết lô. Ảnh đạt xuất bằng
+`export-slide.mjs --checked` như dưới. Ảnh không đạt ghi bằng
+`node scripts/episode-tools.mjs reject EPISODE_DIR IMAGE --note "lỗi cụ thể"`
+(`IMAGE` là đường dẫn tương đối trong tập). Biên bản trong `rejections/` gắn
+với SHA-256 ảnh và fingerprint slide, nên áp dụng cho cả bản nháp và bản xuất
+có cùng byte của slide đó. Giữ ảnh gốc để đối chiếu. Bản sửa của ảnh đã xuất
+đi vào revision mới, không ghi đè.
 
 Sai thì yêu cầu sửa lỗi cụ thể, gửi lại text chuẩn + đúng mẫu nhân vật; có thể
 kèm ảnh nháp với vai trò bố cục cần sửa. Không sửa JSON/nguồn để hợp thức hóa
@@ -165,8 +176,10 @@ node scripts/export-slide.mjs --checked --carry-forward EPISODE_DIR/output/r01/0
 
 Ảnh cũ chưa từng có checkpoint gắn với kịch bản: mở lại và đối chiếu đầy đủ với kịch bản và
 mẫu hiện hành, rồi dùng `--checked --import-legacy` thay cho `--carry-forward`
-trong lệnh trên. Cần snapshot gốc trỏ đúng ảnh và trang không đổi. Biên bản
-ghi nguồn cũ, không giả lập request hash. Các revision sau dùng lại biên bản
+trong lệnh trên nếu snapshot gốc trỏ đúng ảnh và trang không đổi. Nếu không có
+snapshot, chỉ dùng `--checked --recheck-legacy` sau khi kiểm tra lại đầy đủ
+và biên bản cũ khớp tên ảnh lẫn SHA-256; xuất sang revision mới. Biên bản
+ghi nguồn cũ, không giả lập snapshot hay request hash. Các revision sau dùng lại biên bản
 này như bình thường khi ảnh và kịch bản còn khớp.
 
 Sau khi xuất đủ các trang của revision, chạy:

@@ -61,7 +61,8 @@ export function checkpointIssue(check, { revision, slide, image, imageSha256, sl
   if (check?.schema_version !== CHECKPOINT_SCHEMA_VERSION) return `Outdated or unbound check checkpoint schema for slide ${slide}; re-export with --checked`;
   if (check.revision !== revision || check.slide !== slide || check.image !== image) return `Check checkpoint mismatch for slide ${slide}`;
   const legacy = check.legacy_import;
-  if (legacy ? check.request_sha256 !== null || !/^r\d{2,}$/.test(legacy.revision) || !isSha256(legacy.snapshot_sha256) : !isSha256(check.request_sha256)) {
+  if (legacy ? check.request_sha256 !== null || !/^r\d{2,}$/.test(legacy.revision) ||
+      (legacy.snapshot_sha256 === undefined ? !isSha256(legacy.rechecked_from_sha256) : !isSha256(legacy.snapshot_sha256)) : !isSha256(check.request_sha256)) {
     return `Check checkpoint for slide ${slide} is missing valid request_sha256 or legacy provenance`;
   }
   if (check.visual_check?.passed !== true || typeof check.visual_check.note !== 'string' || !check.visual_check.note.trim()) {

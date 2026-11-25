@@ -432,12 +432,143 @@ test('drawBatch validates fingerprints before skipping, blocks unresolved retrie
   await assert.rejects(drawBatch({ episodeFile: episode, manifestFile, request }), /Symlink is not allowed/);
 
   // A fresh first job must not POST when a later entry has a missing promptFile.
+  await writeFile(episode, JSON.stringify(ep([{ text: 'New slide 1' }, { text: '2' }, { text: '3' }])));
+  const freshBuilt = await buildPrompts(root, { revision: 'r02', slides: [1], styleRef: raw });
+  const [fresh] = JSON.parse(await readFile(freshBuilt.batchManifest, 'utf8'));
   await writeFile(manifestFile, JSON.stringify([
-    { ...manifest[0], workDir: join(root, 'drafts', '001-r02-a1') },
+    fresh,
     { ...manifest[1], promptFile: join(root, 'prompts', 'missing.txt'), workDir: join(root, 'drafts', '002-r01-a3') },
   ]));
   await assert.rejects(drawBatch({ episodeFile: episode, manifestFile, request }), /ENOENT|missing/);
   assert.equal(calls, 4);
+});
+
+test('handoff rechecks legacy output and resume never POSTs a verified slide', async t => {
+  const { root, raw, episode, mod } = await setup(t);
+  const { buildPrompts, episodeHandoff, episodeStatus, finalizeEpisode, rejectImage } = await import('../../scripts/episode-tools.mjs' as string);
+  await writeFile(episode, JSON.stringify(ep([{ text: 'Slide 1' }, { text: 'Slide 2' }])));
+  const old = join(root, 'output', 'r01');
+  const legacy = join(old, '002.jpg');
+  const published = join(root, 'output', 'r02', '002.jpg');
+  await mkdir(join(old, 'checks'), { recursive: true });
+  execFileSync('magick', ['-size', '1080x1440', 'xc:white', legacy]);
+  const { sha256Bytes } = await fpPromise;
+  const imageHash = sha256Bytes(await readFile(legacy));
+  const checkFile = join(old, 'checks', '002.jpg.json');
+  const legacyCheck = (sha256: string) => JSON.stringify({ image: '002.jpg', sha256, visual_check: 'Checked' });
+  const exportLegacy = () => spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', '--recheck-legacy', legacy, published, 'Checked again'], { encoding: 'utf8' });
+  await writeFile(checkFile, legacyCheck('0'.repeat(64)));
+  assert.match(exportLegacy().stderr, /Legacy image SHA-256 mismatch/);
+  await writeFile(checkFile, legacyCheck(imageHash));
+
+  const { batchManifest: manifestFile } = await buildPrompts(root, { revision: 'r02', styleRef: raw });
+  const [first, second] = JSON.parse(await readFile(manifestFile, 'utf8'));
+  let posts = 0;
+  const request = async () => { posts++; return new Response(await readFile(raw)); };
+  const batch = () => mod.drawBatch({ episodeFile: episode, manifestFile, request });
+  assert.deepEqual((await episodeHandoff(root, { revision: 'r02' })).next, {
+    draw: [1], review_output: [[2, 'output/r01/002.jpg']],
+  });
+  await assert.rejects(batch(), /slide 2 has review_output/);
+  assert.equal(posts, 0);
+  const result = exportLegacy();
+  assert.equal(result.status, 0, result.stderr);
+  const check = JSON.parse(await readFile(join(root, 'output', 'r02', 'checks', '002.jpg.json'), 'utf8'));
+  assert.equal(check.request_sha256, null);
+  assert.equal(check.legacy_import.rechecked_from_sha256, sha256Bytes(Buffer.from(legacyCheck(imageHash))));
+  assert.deepEqual((await episodeHandoff(root)).next, { draw: [1], keep: [2] });
+  assert.deepEqual((await episodeHandoff(root, { revision: 'r03' })).next.carry_forward, [[2, 'output/r02/002.jpg']]);
+  await assert.rejects(mod.draw({ ...second, episodeFile: episode, request, workDir: join(root, 'drafts', '002-r03-a1'), allowRepeat: true, replaceUnverified: true }), /slide 2 has carry_forward/);
+  assert.equal(posts, 0);
+  assert.deepEqual((await batch()).skipped, [2]);
+  assert.equal(posts, 1);
+  assert.deepEqual((await episodeHandoff(root)).next.review_draft, [[1, 'drafts/001-r02-a1/image.jpg']]);
+  await assert.rejects(mod.draw({ ...first, episodeFile: episode, request, workDir: join(root, 'drafts', '001-r03-a1') }), /Identical request already succeeded/);
+  assert.equal(posts, 1);
+  const exportedFirst = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', join(first.workDir, 'image.jpg'), join(root, 'output', 'r02', '001.jpg'), 'Checked'], { encoding: 'utf8' });
+  assert.equal(exportedFirst.status, 0, exportedFirst.stderr);
+  assert.equal((await episodeHandoff(root)).completion, 'finalize');
+  const beforeFinalize = await readFile(episode);
+  assert.equal((await finalizeEpisode(root, { revision: 'r02' })).ok, true);
+  assert.equal((await episodeHandoff(root)).completion, 'ready_for_review');
+  assert.deepEqual((await episodeHandoff(root)).next, { keep: [1, 2] });
+  await writeFile(episode, beforeFinalize);
+  assert.equal((await episodeHandoff(root)).completion, 'finalize');
+  assert.equal((await finalizeEpisode(root, { revision: 'r02' })).idempotent, true);
+
+  const draft = 'drafts/001-r02-a1/image.jpg';
+  const output = 'output/r02/001.jpg';
+  await rejectImage(root, output, 'Extra accent');
+  await rejectImage(root, output, 'Extra accent');
+  await assert.rejects(rejectImage(root, output, 'Different note'), /already exists/);
+  const resumed = await episodeHandoff(root);
+  assert.equal(resumed.completion, 'in_progress');
+  assert.deepEqual(resumed.next.repair, [[1, output]]);
+  assert.deepEqual(resumed.next.rejected, [[1, output, 'Extra accent']]);
+  assert.equal((await episodeStatus(root, { revision: 'r02' })).slides[0].checkState, 'rejected');
+  await assert.rejects(batch(), /slide 1 has repair/);
+  await assert.rejects(finalizeEpisode(root, { revision: 'r02' }), /Cannot finalize rejected image/);
+  const rejectedExport = spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', join(root, draft), join(root, 'output', 'r03', '001.jpg'), 'Checked'], { encoding: 'utf8' });
+  assert.match(rejectedExport.stderr, /Cannot export visually rejected image/);
+  await rm(join(root, output));
+  assert.deepEqual((await episodeHandoff(root)).next.repair, [[1, draft]]);
+  await assert.rejects(batch(), /slide 1 has repair at drafts\//);
+  assert.equal(posts, 1);
+});
+
+test('handoff identifies occupied output and multiple output files without losing the checked source', async t => {
+  const { root, raw, prompt, draw } = await setup(t);
+  const { episodeHandoff, episodeStatus, finalizeEpisode, rejectImage } = await import('../../scripts/episode-tools.mjs' as string);
+  const { sha256Bytes } = await fpPromise;
+  const draft = await draw({ promptFile: prompt, workDir: join(root, 'drafts', '001-r01-a1'), request: async () => new Response(await readFile(raw)) });
+  const source = 'output/r01/001.jpg';
+  const target = 'output/r02/001.jpg';
+  const png = 'output/r02/001.png';
+  const exportImage = (from: string, to: string, flags: string[] = []) =>
+    spawnSync(process.execPath, ['scripts/export-slide.mjs', '--checked', ...flags, from, to, 'Checked'], { encoding: 'utf8' });
+  const exported = exportImage(draft, join(root, source));
+  assert.equal(exported.status, 0, exported.stderr);
+  await mkdir(join(root, 'output/r02/checks'), { recursive: true });
+  execFileSync('magick', ['-size', '1080x1440', 'xc:white', join(root, target)]);
+  const blocked = await episodeHandoff(root, { revision: 'r02' });
+  assert.deepEqual(blocked.next, { output_conflict: [[1, [target], source]] });
+  assert.equal(blocked.completion, 'in_progress');
+  assert.deepEqual((await episodeHandoff(root, { revision: 'r03' })).next.carry_forward, [[1, source]]);
+
+  await writeFile(join(root, target), await readFile(join(root, source)));
+  assert.deepEqual((await episodeHandoff(root, { revision: 'r02' })).next.carry_forward, [[1, source]]);
+  const carried = exportImage(join(root, source), join(root, target), ['--carry-forward']);
+  assert.equal(carried.status, 0, carried.stderr);
+  const checkpoint = join(root, 'output/r02/checks/001.jpg.json');
+  const saved = JSON.parse(await readFile(checkpoint, 'utf8'));
+  await rm(checkpoint);
+  execFileSync('magick', ['-size', '1080x1440', 'xc:wheat', join(root, png)]);
+  const sha256 = sha256Bytes(await readFile(join(root, png)));
+  await writeFile(join(root, 'output/r02/checks/001.png.json'), JSON.stringify({ ...saved, image: '001.png', sha256, image_sha256: sha256 }));
+  const ambiguous = await episodeHandoff(root, { revision: 'r02' });
+  assert.deepEqual(ambiguous.next, { output_conflict: [[1, [target, png], png]] });
+  assert.equal(ambiguous.completion, 'in_progress');
+  assert.equal((await episodeStatus(root, { revision: 'r02' })).slides[0].checkState, 'conflict');
+  await assert.rejects(finalizeEpisode(root, { revision: 'r02' }), /Conflicting exported images/);
+
+  await rm(join(root, png));
+  await rm(join(root, target));
+  await rejectImage(root, 'drafts/001-r01-a1/image.jpg', 'Wrong text');
+  assert.deepEqual((await episodeHandoff(root, { revision: 'r01' })).next.rejected, [[1, source, 'Wrong text']]);
+  await assert.rejects(finalizeEpisode(root, { revision: 'r01' }), /Cannot finalize rejected image/);
+});
+
+test('handoff and drawing agree on the budget after reconciled attempts', async t => {
+  const { root, prompt, draw, episode } = await setup(t);
+  const { episodeHandoff } = await import('../../scripts/episode-tools.mjs' as string);
+  for (const name of ['001-r01-a1', '001-r001-a2', 'legacy-attempt']) {
+    const dir = join(root, 'drafts', name);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'status.json'), JSON.stringify({ state: 'reconciled_failed', plan: { file: episode, slide: 1, character: false } }));
+  }
+  assert.deepEqual((await episodeHandoff(root, { revision: 'r01' })).next, { attempt_limit: [[1, 3, 3]] });
+  assert.deepEqual((await episodeHandoff(root, { revision: 'r02' })).next, { draw: [1] });
+  await assert.rejects(draw({ promptFile: prompt, workDir: join(root, 'drafts', '001-r01-a4'), request: () => assert.fail('Unexpected POST') }), /Attempt limit \(3\) reached/);
 });
 
 test('slide references must match the manifest and a batch never posts an updated override under an old request hash', async t => {
@@ -459,7 +590,7 @@ test('slide references must match the manifest and a batch never posts an update
   assert.equal(calls, 0);
   await assert.rejects(mod.drawBatch({ episodeFile: episode, manifestFile: batchManifest, request: async () => {
     const response = await request();
-    await writeFile(item.promptFile, (await readFile(item.promptFile, 'utf8')) + '\nĐiều chỉnh bố cục.');
+    await writeFile(item.promptFile, `${await readFile(item.promptFile, 'utf8')}\nĐiều chỉnh bố cục.`);
     await buildPrompts(root, { styleRef: raw, override: true });
     return response;
   } }), /request fingerprint changed before POST/);

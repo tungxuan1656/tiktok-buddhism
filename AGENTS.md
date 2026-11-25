@@ -49,7 +49,7 @@ Không yêu cầu họ điều phối Creator/Painter hoặc duyệt từng bư�
   điện thoại; không che nhau hoặc bị cắt khỏi khung.
 - Mọi lượt tạo mẫu, vẽ hoặc sửa ảnh bắt buộc dùng `scripts/draw-image.mjs`
   theo hướng dẫn API; không tự gọi curl/fetch. Dùng `scripts/episode-tools.mjs`
-  (`validate`, `build-prompts`, `status`, `finalize`) và `--batch` khi vẽ cả tập:
+  (`validate`, `build-prompts`, `handoff`, `status`, `finalize`) và `--batch` khi vẽ cả tập:
   kiểm tra slide 1 trước rồi vẽ lô các trang còn lại. Script giữ response gốc
   và xử lý JPEG quality 95, 1080 x 1440; không cần xuất PNG mới hay mã hóa lại khi bàn giao.
   Không tự nén lại kho PNG cũ; chỉ dọn bản bị thay thế theo chính sách dưới.
@@ -72,6 +72,12 @@ Không yêu cầu họ điều phối Creator/Painter hoặc duyệt từng bư�
   gửi sang kênh/tài khoản bên ngoài. Ngoại lệ đã được người dùng giao: bridge
   được gửi ảnh/album hoặc tệp ảnh đã chốt của tác vụ Telegram về đúng private chat chủ bot đã cấu hình;
   Pi không tự gọi Telegram hay chọn người nhận. Không tự mua/thêm dịch vụ, đổi provider.
+- Khi tiếp tục sau gián đoạn, chạy `node scripts/episode-tools.mjs handoff EPISODE_DIR`
+  trước khi đọc lại lịch sử hay vẽ. Giữ/chuyển ảnh đã có biên bản khớp, chỉ mở
+  ảnh cần kiểm và giải quyết attempt chưa rõ. Ngay sau khi xem từng ảnh, xuất
+  ảnh đạt bằng `--checked` hoặc ghi ảnh lỗi bằng `episode-tools.mjs reject`
+  (xem [WORKFLOW.md](WORKFLOW.md)). Không đợi đến cuối lô mới ghi và không
+  chạy lại manifest cũ để phục hồi.
 - Không tìm/in/lưu khóa bí mật. Không retry khi timeout vì có thể tạo trùng.
   Dừng đúng lỗi, báo phần còn thiếu, không giả vờ đã hoàn thành.
 

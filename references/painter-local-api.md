@@ -67,7 +67,9 @@ trong manifest (nếu có). Có thể thêm ảnh nháp làm tham chiếu sửa 
 mô tả vai trò của nó trong prompt. Khi sửa tay prompt, chạy `build-prompts
 --override` để ghi nhận thay đổi. Chỉ thêm `--allow-repeat` ở cuối lệnh
 `--slide` nếu đã xem ảnh cũ và thực sự cần gửi lại **cùng** request đã thành
-công; cờ này không bỏ giới hạn lượt hoặc cho retry request chưa rõ kết quả.
+công. Dùng `--replace-unverified` ở cuối lệnh `--slide` chỉ khi đã đối chiếu
+ảnh cũ/nháp của đúng trang và xác định không đạt hoặc không thể phục hồi.
+Không cờ nào bỏ chốt ảnh đã kiểm, giới hạn lượt hoặc attempt chưa rõ kết quả.
 Không gửi cả nguồn kinh khi chỉ cần in một trang.
 
 Script tự tạo thư mục độc quyền, lưu request/reference metadata, gọi **một**
@@ -125,6 +127,11 @@ nhất sau khi gửi đủ; raw/draft/prompt và bản bị thay thế được 
 WORKFLOW. Giữ dữ liệu lỗi/unknown và mọi file còn là nguồn/nhân vật cần dùng.
 
 ## Lỗi và tiếp tục không tạo ảnh trùng
+
+Chạy `node scripts/episode-tools.mjs handoff EPISODE_DIR` trước khi tiếp tục.
+Wrapper chặn POST nếu có output đã kiểm khớp kịch bản ở bất kỳ revision nào;
+output chưa kiểm hoặc draft còn khớp phải được xem trước khi thay. Batch
+không có cờ bỏ chốt; dùng `build-prompts --slides ...` cho các trang thật sự thiếu.
 
 - `invalid_input`: chưa gọi API; sửa prompt/đường dẫn/môi trường, dùng draft mới.
 - `failed`: HTTP từ chối xác định; giữ response để xem lỗi an toàn. Không tự

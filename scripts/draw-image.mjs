@@ -1,10 +1,11 @@
 import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify, parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { computeRequestFingerprint, sha256Bytes } from './lib/fingerprint.mjs';
 import { withEpisodeLock } from './lib/lock.mjs';
+import { countsAgainstSlideBudget, draftRevision, findOutputReuse, outputRevisions, readAttemptRecord, readRejection } from './lib/resume.mjs';
 import {
   confineExistingPath,
   confineTargetPath,
@@ -41,11 +42,6 @@ const pad3 = n => String(n).padStart(3, '0');
 
 function allowedRefRoots(episodeDir) {
   return [episodeDir, join(REPO_ROOT, 'references'), join(REPO_ROOT, 'characters')];
-}
-
-function revisionFromDraftName(name) {
-  const m = /^\d{3}-(r\d{2,})-[a-z0-9-]+$/i.exec(name);
-  return m ? BigInt(m[1].slice(1)) : null;
 }
 
 function promptMetaPathFor(promptFile) {
@@ -100,60 +96,11 @@ async function loadEpisodeAndValidate(episodeFile, { slide, character = false, a
   return { episode, episodeDir, resolvedEpisode: checkedEp.real, validation };
 }
 
-async function readAttemptRecord(draftDirPath, entryName) {
-  const statusPath = join(draftDirPath, 'status.json');
-  const reqPath = join(draftDirPath, 'request.json');
-  const statIfPresent = path => lstat(path).catch(error => {
-    if (error.code !== 'ENOENT') throw error;
-    return null;
-  });
-  const stStat = await statIfPresent(statusPath);
-  const reqStat = await statIfPresent(reqPath);
-  if (!stStat && !reqStat) return null;
-
-  if (reqStat && (!reqStat.isFile() || reqStat.size > MAX_EPISODE_JSON_BYTES)) {
-    throw new Error(`Corrupted request.json in drafts/${entryName}`);
-  }
-  let req = null;
-  if (reqStat) {
-    try {
-      req = JSON.parse(await readFile(reqPath, 'utf8'));
-      if (!req?.plan || typeof req.plan.file !== 'string') throw new Error('Missing request plan');
-    } catch {
-      throw new Error(`Corrupted request.json in drafts/${entryName}`);
-    }
-  }
-
-  if (!stStat) {
-    throw new Error(`Missing status.json for registered attempt drafts/${entryName}`);
-  }
-  if (!stStat.isFile() || stStat.size > MAX_EPISODE_JSON_BYTES) {
-    throw new Error(`Corrupted status.json in drafts/${entryName}`);
-  }
-  let rec;
-  try { rec = JSON.parse(await readFile(statusPath, 'utf8')); }
-  catch { throw new Error(`Corrupted status.json in drafts/${entryName}`); }
-
-  const plan = req?.plan ?? rec?.plan;
-  // Old standalone conversions lost their mode on success, but never wrote API request/reference metadata.
-  if (rec?.state === 'succeeded' && !reqStat && Object.keys(rec).every(key => ['state', 'source', 'output'].includes(key)) &&
-      rec.output?.file === 'image.jpg' && rec.output.mime === 'image/jpeg' &&
-      rec.output.width === OUTPUT_WIDTH && rec.output.height === OUTPUT_HEIGHT &&
-      !await statIfPresent(join(draftDirPath, 'references.json'))) {
-    return { ...rec, mode: 'normalize' };
-  }
-  const validState = ['invalid_input', 'succeeded', 'failed'].includes(rec?.state) || UNRESOLVED_STATES.has(rec?.state) || RECONCILED_STATES.has(rec?.state);
-  if (!validState || (rec.state !== 'invalid_input' && rec.mode !== 'normalize' &&
-      (typeof plan?.file !== 'string' || typeof plan.character !== 'boolean' || (!plan.character && !Number.isSafeInteger(plan.slide))))) {
-    throw new Error(`Corrupted attempt metadata in drafts/${entryName}`);
-  }
-  return { ...rec, plan, request_sha256: req?.request_sha256 ?? rec.request_sha256 };
-}
-
-async function checkAttemptHistory({ draftsDir, episodeFile, slide, character, targetDraftName, requestSha256, allowRepeat, checkBudget = true }) {
-  const targetRev = revisionFromDraftName(targetDraftName);
+async function checkAttemptHistory({ draftsDir, episodeFile, slide, character, targetDraftName, requestSha256, slideContentSha256, allowRepeat, replaceUnverified, checkBudget = true }) {
+  const targetRev = draftRevision(targetDraftName);
   let attempts = 0;
   let matchingSuccess;
+  let matchingDraft;
   for (const entry of await readdir(draftsDir)) {
     const entryDir = join(draftsDir, entry);
     if (!(await lstat(entryDir)).isDirectory()) continue;
@@ -168,10 +115,10 @@ async function checkAttemptHistory({ draftsDir, episodeFile, slide, character, t
     if (UNRESOLVED_STATES.has(record.state)) {
       throw new Error(`Unresolved attempt "${entry}" for ${character ? 'character' : `slide ${slide}`} has state "${record.state}". Reconcile it first before creating a new attempt.`);
     }
-    const entryRev = revisionFromDraftName(entry);
-    if (!character && (entryRev === null || entryRev === targetRev)) {
-      attempts++;
-      if (isSha256(requestSha256) && record.state === 'succeeded' && record.request_sha256 === requestSha256) matchingSuccess = entry;
+    if (!character && countsAgainstSlideBudget(entry, targetRev)) attempts++;
+    if (!character && record.state === 'succeeded') {
+      if (isSha256(requestSha256) && record.request_sha256 === requestSha256) matchingSuccess = entry;
+      if (isSha256(slideContentSha256) && record.slide_content_sha256 === slideContentSha256 && isSha256(record.output?.sha256)) matchingDraft = entry;
     }
   }
   if (checkBudget && !character && attempts >= MAX_ATTEMPTS_PER_SLIDE) {
@@ -180,6 +127,17 @@ async function checkAttemptHistory({ draftsDir, episodeFile, slide, character, t
   if (matchingSuccess && !allowRepeat) {
     throw new Error(`Identical request already succeeded in drafts/${matchingSuccess}; reuse it or explicitly pass --allow-repeat after inspection.`);
   }
+  if (matchingDraft && !replaceUnverified && !(matchingSuccess && allowRepeat)) {
+    throw new Error(`Matching slide draft already succeeded in drafts/${matchingDraft}; review it before drawing a replacement.`);
+  }
+}
+
+async function outputBeforeDraw(episodeDir, slide, slideSha256, draftName) {
+  return findOutputReuse(episodeDir, slide, slideSha256, draftRevision(draftName), await outputRevisions(episodeDir));
+}
+
+function reuseError(slide, candidate) {
+  return new Error(`Image job not sent: slide ${slide} has ${candidate.action} at ${candidate.file}; run episode-tools.mjs handoff before drawing.`);
 }
 
 async function readAndCheckReferences(references, episodeDir, { includeBytes = true, maxTotalBytes = MAX_TOTAL_REF_BYTES } = {}) {
@@ -251,6 +209,7 @@ export async function draw({
   skipMagickCheck = false,
   expectedRequestSha256,
   allowRepeat = false,
+  replaceUnverified = false,
   maxTotalRefBytes = MAX_TOTAL_REF_BYTES,
 }) {
   if ((Array.isArray(references) && references.length > MAX_REFS) || (normalizeFrom && (promptFile || references.length))) {
@@ -322,8 +281,12 @@ export async function draw({
       err.code = 'EEXIST';
       throw err;
     }
+    if (!character) {
+      const reusable = await outputBeforeDraw(episodeDir, slide, slideContentSha256, basename(confinedWork));
+      if (reusable && !(replaceUnverified && ['review_output', 'repair'].includes(reusable.action))) throw reuseError(slide, reusable);
+    }
     await checkAttemptHistory({ draftsDir, episodeFile: resolvedEpisode, slide, character,
-      targetDraftName: basename(confinedWork), requestSha256, allowRepeat });
+      targetDraftName: basename(confinedWork), requestSha256, slideContentSha256, allowRepeat, replaceUnverified });
     // Until the rename registers it, no POST is possible and retention must not see an unresolved attempt.
     const staging = await mkdtemp(join(episodeDir, '.register-'));
     try {
@@ -554,6 +517,13 @@ export async function drawBatch({ episodeFile, manifestFile, request = fetch }) 
       throw new Error(`Batch slide ${item.slide}: stale manifest (request fingerprint mismatch); rebuild prompts`);
     }
 
+    const reusable = await outputBeforeDraw(episodeDir, item.slide, slideContentSha256, basename(confinedWork));
+    if (reusable?.action === 'keep') {
+      skipped.push(item.slide);
+      continue;
+    }
+    if (reusable) throw reuseError(item.slide, reusable);
+
     const workExists = await lstat(confinedWork).then(() => true, err => (err.code === 'ENOENT' ? false : Promise.reject(err)));
     if (workExists) {
       const checkedStatus = await confineExistingPath([confinedWork], join(confinedWork, 'status.json'), { requireRegularFile: true }).catch(() => null);
@@ -578,6 +548,10 @@ export async function drawBatch({ episodeFile, manifestFile, request = fetch }) 
         if (!existing.output?.sha256 || imgInfo.sha256 !== existing.output.sha256) {
           throw new Error(`Batch stopped at slide ${item.slide}: existing image.jpg failed SHA-256 verification`);
         }
+        const file = relative(episodeDir, join(confinedWork, 'image.jpg'));
+        if (await readRejection(episodeDir, slideContentSha256, imgInfo.sha256)) {
+          throw reuseError(item.slide, { action: 'repair', file });
+        }
         skipped.push(item.slide);
         continue;
       }
@@ -591,6 +565,7 @@ export async function drawBatch({ episodeFile, manifestFile, request = fetch }) 
       character: false,
       targetDraftName: basename(confinedWork),
       requestSha256: expectedRequestSha256,
+      slideContentSha256,
     });
     pending.push(item);
   }
@@ -619,8 +594,10 @@ export async function drawBatch({ episodeFile, manifestFile, request = fetch }) 
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const args = process.argv.slice(2);
-  const allowRepeat = args[0] === '--slide' && args.at(-1) === '--allow-repeat';
-  if (allowRepeat) args.pop();
+  const slideFlags = new Set();
+  if (args[0] === '--slide') {
+    while (['--allow-repeat', '--replace-unverified'].includes(args.at(-1))) slideFlags.add(args.pop());
+  }
   if (args[0] === '--reconcile') {
     try {
       const { values, positionals } = parseArgs({
@@ -639,7 +616,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       process.exitCode = 1;
     }
   } else if (!((args[0] === '--normalize' && (args.length === 2 || args.length === 3)) || (args[0] === '--batch' && args.length === 3) || (args[0] === '--slide' && args.length >= 5) || (args[0] === '--character' && args.length >= 4))) {
-    console.error('Usage: node scripts/draw-image.mjs --slide EPISODE_JSON SLIDE_NUMBER PROMPT_FILE NEW_DRAFT_DIR [REFERENCE ...] [--allow-repeat]\n       node scripts/draw-image.mjs --batch EPISODE_JSON BATCH_MANIFEST_JSON\n       node scripts/draw-image.mjs --character EPISODE_JSON PROMPT_FILE NEW_DRAFT_DIR [REFERENCE ...]\n       node scripts/draw-image.mjs --normalize RESPONSE_FILE [NEW_DRAFT_DIR]\n       node scripts/draw-image.mjs --reconcile DRAFT_DIR --resolution reconciled_failed|reconciled_superseded --note "..."');
+    console.error('Usage: node scripts/draw-image.mjs --slide EPISODE_JSON SLIDE_NUMBER PROMPT_FILE NEW_DRAFT_DIR [REFERENCE ...] [--allow-repeat] [--replace-unverified]\n       node scripts/draw-image.mjs --batch EPISODE_JSON BATCH_MANIFEST_JSON\n       node scripts/draw-image.mjs --character EPISODE_JSON PROMPT_FILE NEW_DRAFT_DIR [REFERENCE ...]\n       node scripts/draw-image.mjs --normalize RESPONSE_FILE [NEW_DRAFT_DIR]\n       node scripts/draw-image.mjs --reconcile DRAFT_DIR --resolution reconciled_failed|reconciled_superseded --note "..."');
     process.exitCode = 1;
   } else if (args[0] === '--batch') {
     try { console.log(JSON.stringify(await drawBatch({ episodeFile: args[1], manifestFile: args[2] }))); }
@@ -650,7 +627,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   } else {
     const options = args[0] === '--normalize' ? { normalizeFrom: args[1], workDir: args[2] }
       : args[0] === '--character' ? { episodeFile: args[1], character: true, promptFile: args[2], workDir: args[3], references: args.slice(4) }
-        : { episodeFile: args[1], slide: Number(args[2]), promptFile: args[3], workDir: args[4], references: args.slice(5), allowRepeat };
+        : { episodeFile: args[1], slide: Number(args[2]), promptFile: args[3], workDir: args[4], references: args.slice(5), allowRepeat: slideFlags.has('--allow-repeat'), replaceUnverified: slideFlags.has('--replace-unverified') };
     try { console.log(await draw(options)); }
     catch (error) {
       console.error(error.code === 'EEXIST' ? 'Draft directory already exists; no API call was made.'
