@@ -25,6 +25,23 @@ async function imageInfo(path) {
   return { mime, width: Number(match[2]), height: Number(match[3]), bytes: bytes.length };
 }
 
+async function validateEpisodePlan(episodeFile, { slide, character = false, allowAnySlide = false, onGate } = {}) {
+  onGate?.('script_invalid');
+  const bytes = await readFile(episodeFile);
+  if (bytes.length > 128 * 1024) throw new Error('Script too large');
+  const episode = JSON.parse(bytes.toString('utf8'));
+  onGate?.('script_count');
+  if (!Array.isArray(episode.slides) || episode.slides.length < 1 || episode.slides.length > 35) {
+    throw new Error('Script must contain 1-35 slides');
+  }
+  onGate?.('slide_invalid');
+  const invalidSlide = episode.slides.some(page => typeof page?.text !== 'string' || !page.text.trim()) ||
+    (!allowAnySlide && (character ? slide !== undefined : !Number.isSafeInteger(slide) || slide < 1 || slide > episode.slides.length));
+  if (invalidSlide) throw new Error('Invalid planned slide');
+  onGate?.(undefined);
+  return episode;
+}
+
 export async function draw({ promptFile, workDir, references = [], normalizeFrom, episodeFile, slide, character = false, request = fetch }) {
   if (references.length > 10 || (normalizeFrom && (promptFile || references.length))) throw new Error('Invalid arguments');
   // Exclusive directory creation prevents duplicate calls and overwriting a previous attempt.
@@ -50,17 +67,12 @@ export async function draw({ promptFile, workDir, references = [], normalizeFrom
       state = 'received';
       await save({ state, mode: 'normalize', source: resolve(normalizeFrom) });
     } else {
-      gateError = 'script_invalid';
-      const bytes = await readFile(episodeFile);
-      if (bytes.length > 128 * 1024) throw new Error('Script too large');
-      const episode = JSON.parse(bytes.toString('utf8'));
-      gateError = 'script_count';
-      if (!Array.isArray(episode.slides) || episode.slides.length < 1 || episode.slides.length > 35) throw new Error('Script must contain 1-35 slides');
-      gateError = 'slide_invalid';
-      if (episode.slides.some(page => typeof page?.text !== 'string' || !page.text.trim()) ||
-        (character ? slide !== undefined : !Number.isSafeInteger(slide) || slide < 1 || slide > episode.slides.length)) throw new Error('Invalid planned slide');
+      const episode = await validateEpisodePlan(episodeFile, {
+        slide,
+        character,
+        onGate: code => { gateError = code; },
+      });
       plan = { file: resolve(episodeFile), count: episode.slides.length, slide, character };
-      gateError = undefined;
       const prompt = await readFile(promptFile, 'utf8');
       if (!prompt.trim()) throw new Error('Empty prompt');
       const images = [];
@@ -113,11 +125,86 @@ export async function draw({ promptFile, workDir, references = [], normalizeFrom
   }
 }
 
+/** Validate the whole batch manifest up front, skip succeeded drafts, and run remaining slides sequentially without retrying failures. */
+export async function drawBatch({ episodeFile, manifestFile, request = fetch }) {
+  const entries = JSON.parse(await readFile(manifestFile, 'utf8'));
+  if (!Array.isArray(entries) || !entries.length) throw new Error('Invalid batch manifest');
+  await exec('magick', ['-version'], { timeout: 10_000 });
+  const episode = await validateEpisodePlan(episodeFile, { allowAnySlide: true });
+  const seenWorkDirs = new Set();
+  const pending = [];
+  const skipped = [];
+
+  // Preflight every entry before any API POST so an invalid later item never triggers partial spend.
+  for (const item of entries) {
+    if (!Number.isSafeInteger(item?.slide) || item.slide < 1 || item.slide > episode.slides.length) {
+      throw new Error(`Invalid batch slide number: ${item?.slide}`);
+    }
+    if (typeof item?.workDir !== 'string' || !item.workDir.trim()) {
+      throw new Error(`Batch slide ${item.slide}: missing workDir`);
+    }
+    const resolvedWorkDir = resolve(item.workDir);
+    if (seenWorkDirs.has(resolvedWorkDir)) {
+      throw new Error(`Duplicate batch workDir at slide ${item.slide}: ${item.workDir}`);
+    }
+    seenWorkDirs.add(resolvedWorkDir);
+
+    const statusPath = join(item.workDir, 'status.json');
+    const existing = await readFile(statusPath, 'utf8').then(s => JSON.parse(s), () => null);
+    if (existing) {
+      if (existing.state === 'succeeded') {
+        const outStat = await stat(join(item.workDir, 'image.jpg'));
+        if (!outStat.isFile() || outStat.size <= 0) throw new Error(`Batch stopped at slide ${item.slide}: missing image.jpg`);
+        skipped.push(item.slide);
+        continue;
+      }
+      throw new Error(`Batch stopped at slide ${item.slide}: existing draft has state ${existing.state}`);
+    }
+    if (await stat(item.workDir).then(() => true, err => err.code !== 'ENOENT')) {
+      throw new Error(`Batch stopped at slide ${item.slide}: draft directory already exists without status.json`);
+    }
+    if (typeof item?.promptFile !== 'string' || !(await readFile(item.promptFile, 'utf8')).trim()) {
+      throw new Error(`Batch slide ${item.slide}: missing or empty promptFile`);
+    }
+    const refs = item.references ?? [];
+    if (!Array.isArray(refs) || refs.length > 10) {
+      throw new Error(`Batch slide ${item.slide}: invalid references (max 10)`);
+    }
+    for (const ref of refs) await imageInfo(ref);
+    pending.push(item);
+  }
+
+  const completed = [];
+  for (const item of pending) {
+    try {
+      const output = await draw({
+        episodeFile,
+        slide: item.slide,
+        promptFile: item.promptFile,
+        workDir: item.workDir,
+        references: item.references ?? [],
+        request,
+      });
+      completed.push({ slide: item.slide, output });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Batch stopped at slide ${item.slide} (completed=${completed.length}, skipped=${skipped.length}): ${msg}`);
+    }
+  }
+  return { ok: true, completed, skipped };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const args = process.argv.slice(2);
-  if (!((args[0] === '--normalize' && args.length === 3) || (args[0] === '--slide' && args.length >= 5) || (args[0] === '--character' && args.length >= 4))) {
-    console.error('Usage: node scripts/draw-image.mjs --slide EPISODE_JSON SLIDE_NUMBER PROMPT_FILE NEW_DRAFT_DIR [REFERENCE ...]\n       node scripts/draw-image.mjs --character EPISODE_JSON PROMPT_FILE NEW_DRAFT_DIR [REFERENCE ...]\n       node scripts/draw-image.mjs --normalize RESPONSE_FILE NEW_DRAFT_DIR');
+  if (!((args[0] === '--normalize' && args.length === 3) || (args[0] === '--batch' && args.length === 3) || (args[0] === '--slide' && args.length >= 5) || (args[0] === '--character' && args.length >= 4))) {
+    console.error('Usage: node scripts/draw-image.mjs --slide EPISODE_JSON SLIDE_NUMBER PROMPT_FILE NEW_DRAFT_DIR [REFERENCE ...]\n       node scripts/draw-image.mjs --batch EPISODE_JSON BATCH_MANIFEST_JSON\n       node scripts/draw-image.mjs --character EPISODE_JSON PROMPT_FILE NEW_DRAFT_DIR [REFERENCE ...]\n       node scripts/draw-image.mjs --normalize RESPONSE_FILE NEW_DRAFT_DIR');
     process.exitCode = 1;
+  } else if (args[0] === '--batch') {
+    try { console.log(JSON.stringify(await drawBatch({ episodeFile: args[1], manifestFile: args[2] }))); }
+    catch (error) {
+      console.error(error.message);
+      process.exitCode = 1;
+    }
   } else {
     const options = args[0] === '--normalize' ? { normalizeFrom: args[1], workDir: args[2] }
       : args[0] === '--character' ? { episodeFile: args[1], character: true, promptFile: args[2], workDir: args[3], references: args.slice(4) }

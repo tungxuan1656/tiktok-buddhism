@@ -50,9 +50,12 @@ node scripts/draw-image.mjs --slide 'episodes/TEN-TAP/episode.json' 1 \
 ```
 
 Tạo/sửa mẫu nhân vật dùng `--character EPISODE_JSON PROMPT_FILE NEW_DRAFT_DIR
-[REFERENCE ...]` thay cho `--slide EPISODE_JSON SLIDE_NUMBER ...`. Cả hai
-chế độ đều đọc JSON, kiểm tra 1-35 slide và text trước POST; `--slide` còn
-kiểm tra số trang có trong kịch bản. CLI cũ không có JSON bị từ chối.
+[REFERENCE ...]` thay cho `--slide EPISODE_JSON SLIDE_NUMBER ...`. Khi vẽ nhiều
+trang sau khi đã chốt slide 1, có thể dùng `--batch EPISODE_JSON BATCH_MANIFEST_JSON`
+(do `scripts/episode-tools.mjs build-prompts` tạo) để kiểm tra manifest trước,
+bỏ qua trang đã `succeeded` và dừng ngay tại trang lỗi mà không tự retry. Tất cả
+chế độ vẽ đều đọc JSON, kiểm tra 1-35 slide và text trước POST; `--slide` và
+`--batch` còn kiểm tra số trang có trong kịch bản. CLI cũ không có JSON bị từ chối.
 `--normalize` chỉ xử lý response đã có nên không yêu cầu kịch bản.
 
 Các đối số sau thư mục draft là ảnh tham chiếu, đúng thứ tự. Có thể không có
@@ -82,11 +85,12 @@ Không thêm bước ghép chữ hoặc app/renderer: chữ và tranh đều đ�
 
 ## Kiểm tra và xuất revision
 
-Mở `image.jpg` ngay sau mỗi lượt, so từng dòng/từ/dấu với `text` trong JSON,
-kiểm tra mặt/y phục/cảnh/bố cục. Không đoán chữ nhỏ, không coi OCR là chứng cứ
-tuyệt đối. Sai thì lưu lý do, tạo lượt sửa mới bằng cùng script/references;
-tối đa hai lần sửa/trang. Không sửa nguồn/kịch bản để hợp thức hóa chữ sai.
-Lưu kết quả kiểm tra ngay sau từng ảnh, không chờ đủ cả bộ.
+Mở `image.jpg` để đối chiếu từng dòng/từ/dấu với `text` trong JSON, kiểm tra
+mặt/y phục/cảnh/bố cục (với mẫu nhân vật, slide 1 hoặc lượt sửa thì mở ngay;
+khi vẽ lô bằng `--batch`, đọc gộp 5–6 ảnh/lượt sau khi xong lô). Không đoán
+chữ nhỏ, không coi OCR là chứng cứ tuyệt đối. Sai thì lưu lý do, tạo lượt sửa
+mới bằng cùng script/references; tối đa hai lần sửa/trang. Không sửa
+nguồn/kịch bản để hợp thức hóa chữ sai. Lưu kết quả kiểm tra ngay sau khi đối chiếu.
 
 Wrapper đã tạo đúng 1080 × 1440; **không mã hóa JPEG lại khi xuất**. Dùng bước
 cục bộ này cho ảnh đã kiểm tra, không gọi API và không dùng `cp -n`:

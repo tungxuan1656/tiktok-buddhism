@@ -127,3 +127,54 @@ test('saved JSON gates every API request, including characters; invalid scripts 
   assert.equal(calls, 2);
   assert.throws(() => execFileSync(process.execPath, [script, prompt, join(root, 'legacy')], { stdio: 'pipe' }));
 });
+
+test('drawBatch skips succeeded drafts, stops on failure without retrying earlier slides, and resumes remaining slides', async t => {
+  const { root, raw, prompt, episode } = await setup(t);
+  const source = await readFile(raw);
+  const { drawBatch } = await import('../../scripts/draw-image.mjs' as string);
+  await writeFile(episode, JSON.stringify({ slides: [{ text: '1' }, { text: '2' }, { text: '3' }] }));
+  const manifestFile = join(root, 'batch.json');
+  await writeFile(manifestFile, JSON.stringify([
+    { slide: 1, promptFile: prompt, workDir: join(root, 'd1'), references: [] },
+    { slide: 2, promptFile: prompt, workDir: join(root, 'd2'), references: [] },
+    { slide: 3, promptFile: prompt, workDir: join(root, 'd3'), references: [] },
+  ]));
+  let calls = 0;
+  await assert.rejects(drawBatch({
+    episodeFile: episode,
+    manifestFile,
+    request: async () => {
+      calls++;
+      if (calls === 2) throw new Error('network drop');
+      return new Response(source);
+    },
+  }), /Batch stopped at slide 2/);
+  assert.equal(calls, 2);
+
+  // Slide 2 is unknown -> batch refuses to continue until resolved; once moved to d2-a2, slide 1 is skipped!
+  await writeFile(manifestFile, JSON.stringify([
+    { slide: 1, promptFile: prompt, workDir: join(root, 'd1'), references: [] },
+    { slide: 2, promptFile: prompt, workDir: join(root, 'd2-a2'), references: [] },
+    { slide: 3, promptFile: prompt, workDir: join(root, 'd3'), references: [] },
+  ]));
+  const res = await drawBatch({
+    episodeFile: episode,
+    manifestFile,
+    request: async () => { calls++; return new Response(source); },
+  });
+  assert.equal(calls, 4);
+  assert.deepEqual(res.skipped, [1]);
+  assert.deepEqual(res.completed.map((c: { slide: number }) => c.slide), [2, 3]);
+
+  // Preflight blocks before calling API on earlier slides when a later entry is invalid/missing.
+  await writeFile(manifestFile, JSON.stringify([
+    { slide: 1, promptFile: prompt, workDir: join(root, 'p1'), references: [] },
+    { slide: 2, promptFile: join(root, 'missing-prompt.txt'), workDir: join(root, 'p2'), references: [] },
+  ]));
+  await assert.rejects(drawBatch({
+    episodeFile: episode,
+    manifestFile,
+    request: async () => { calls++; return new Response(source); },
+  }), /missing or empty promptFile|ENOENT/);
+  assert.equal(calls, 4);
+});
