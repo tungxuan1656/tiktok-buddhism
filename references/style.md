@@ -4,7 +4,8 @@
 
 - Minh họa Phật giáo 2D; nét mảnh, chất liệu chì màu, vàng đất/nâu dịu.
   Không ảnh chụp, 3D, anime hoặc hiệu ứng bóng bẩy.
-- Nền trắng/giấy sáng, thoáng; biểu cảm trang nghiêm, hiền hòa, tiết chế.
+- Nền giấy gần trắng, sáng trung tính và thoáng; không phủ tông kem/vàng
+  hoặc tô kín nền bằng phong cảnh. Biểu cảm trang nghiêm, hiền hòa, tiết chế.
 - Khung dọc 3:4; thành phẩm **JPEG quality 95, 1080 × 1440**, chroma 4:4:4.
   Dùng [wrapper API](painter-local-api.md) để giữ raw, đo ảnh, fit + padding và
   nén ngay trong script; không crop/méo/chèn chữ hoặc mã hóa lại khi xuất. PNG
@@ -12,8 +13,9 @@
 - **Bố cục linh hoạt theo nội dung**, không bắt buộc tỷ lệ vùng chữ/tranh hay
   vị trí trên/dưới cố định. Sắp xếp để tranh và chữ hiển thị đầy đủ, rõ ràng,
   cân đối; không che nhau hoặc bị cắt khỏi khung. Không thu nhỏ chữ để ép bố cục.
-- Một cảnh dễ đọc, ít chi tiết; không khung, bong bóng thoại, logo/watermark.
-  Không tự thêm cây, hào quang, bệ đá chỉ vì ảnh ví dụ có chúng.
+- Một cụm minh họa gọn, ít chi tiết, chừa khoảng trắng rõ giữa tranh và chữ;
+  dùng nét chì nhẹ thay vì mảng màu dày. Không khung, bong bóng thoại,
+  logo/watermark. Không thêm cây, hào quang, bệ đá chỉ vì ảnh mẫu có chúng.
 - Mặt, tóc, tỷ lệ, y phục theo JSON và ảnh mẫu đúng phiên bản. Được đổi tư thế
   theo cảnh; không bắt buộc chép nền/bố cục của ảnh định danh.
 
@@ -23,8 +25,10 @@
   độc giả, không mã tập/phần quản lý, trạng thái hoặc lời nói với chủ bot.
   Nguồn trên ảnh ghi đúng tên sách/kinh, không "bản bạn cung cấp".
 - Đưa đúng nội dung `text` vào prompt. Chỉ đoạn đó được in, không thêm chữ phụ.
-- Chữ nâu sẫm gần `#4B2F1E`, nét rõ, mềm, canh giữa, lề thoáng. Ưu tiên
-  kiểu chữ dễ đọc hỗ trợ tiếng Việt đầy đủ, đồng nhất qua các trang.
+- Cả bìa lẫn trang nội dung dùng chữ **không chân**, nét tròn mềm, đều nét,
+  hơi giống chữ viết tay nhưng rõ dấu tiếng Việt. Chữ nâu sẫm gần `#4B2F1E`,
+  canh giữa, lề thoáng, nhất quán qua các trang. Không dùng chữ có chân
+  (serif), kiểu chữ sách cổ hoặc nét đậm nặng.
 - Mục tiêu tương đương cỡ 44–52 px trên 1080 px ngang, không chữ bé li ti.
   Đây là chỉ dẫn hình ảnh, không phải tham số model bảo đảm. Chia trang
   theo nội dung và độ dễ đọc, không có số slide mặc định. Lời Đức Phật/lời
@@ -37,9 +41,16 @@
 
 ## Tham chiếu và lịch sử
 
-Mở [ảnh ví dụ gốc](user-style-v1/example-01-original.png) để hiểu nét vẽ/màu/bố
-cục. Không lấy chữ trong ảnh làm nguồn kinh hoặc sao chép mọi đồ vật trong đó.
-Ảnh gốc 765 × 1024 không phải kích thước đầu ra.
+Mở [ảnh ví dụ gốc](user-style-v1/example-01-original.png) và gửi ảnh thật với
+vai trò **chỉ tham chiếu phong cách** khi vẽ hoặc sửa slide. Có thể dùng ảnh đã
+được người dùng xác nhận đúng phong cách cho công việc đó. Mẫu định danh vẫn
+được gửi riêng; ảnh phong cách chỉ hướng dẫn kiểu chữ, nét chì, màu nền và
+khoảng trắng. Không chép nội dung chữ, người hay vật từ ảnh phong cách. Ảnh
+ví dụ 765 × 1024 không phải kích thước đầu ra.
+
+Khi xem ảnh sau nén, so cả kiểu chữ, nền giấy và độ thoáng với mẫu phong cách.
+Chữ có chân, nền phủ kem/vàng hoặc cảnh quá dày chi tiết là lỗi phong cách,
+kể cả khi chữ đã đúng nguyên văn.
 
 [Hồ sơ gốc](user-style-v1/README.md) được giữ nguyên để truy nguyên. Các quy tắc
 cũ “minh họa không chữ”, “ghép chữ riêng”, “duyệt mẫu trước” và chia vùng
