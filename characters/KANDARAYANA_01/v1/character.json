@@ -1,0 +1,45 @@
+{
+  "id": "KANDARAYANA_01",
+  "name": "Bà-la-môn Kandaràyana (thiết kế minh họa)",
+  "aliases": [
+    "Kandaràyana",
+    "Kandarayana",
+    "Bà-la-môn Kandaràyana"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam Bà-la-môn Nam Á khoảng 58–62 tuổi, da nâu ấm, khuôn mặt đĩnh đạc hơi dài có nếp suy tư nhẹ ở trán và khóe mắt, lông mày rậm xám bạc pha đen, mắt nâu sâu sắc điềm tĩnh, mũi thẳng vừa; râu quai nón ngắn gọn và ria mép màu trắng xám muối tiêu cắt tỉa gọn gàng.",
+    "hair": "Tóc dài màu muối tiêu (trắng bạc pha đen) chải gọn ra sau và búi củ tỏi nhỏ gọn ở sau gáy; không đội khăn quấn đầu và không búi đỉnh đầu.",
+    "body": "Vóc dáng cao vừa đĩnh đạc, người đứng tuổi cân đối, chân trần.",
+    "clothing": "Áo vải bông cổ tròn tay lửng chạm dưới khuỷu tay màu trắng ngà kem nhạt dài qua hông; bên ngoài khoác khăn choàng vải mềm màu nâu cát nhạt vắt qua vai trái rủ xuống ngang hông; phía dưới quấn dhoti vải kem sáng có đường viền mảnh màu nâu đất nhạt ở gấu vải dài gần mắt cá chân. Không trang sức, không chuỗi hạt."
+  },
+  "keep": [
+    "Giữ khuôn mặt đĩnh đạc có râu ria ngắn màu trắng xám muối tiêu, tóc muối tiêu búi nhỏ sau gáy không khăn đầu.",
+    "Giữ áo tay lửng trắng ngà kem nhạt, khăn choàng nâu cát nhạt vai trái, dhoti kem viền nâu mảnh ở gấu và chân trần.",
+    "Chất liệu chì màu 2D nét mảnh, biểu cảm nghiêm nghị ôn hòa tiết chế trên nền giấy gần trắng."
+  ],
+  "can_vary": [
+    "Đứng, ngồi, cúi chào và tư thế tay tự nhiên theo cảnh",
+    "Hướng nhìn và biểu cảm nhẹ khi thưa hỏi hoặc lắng nghe"
+  ],
+  "avoid": [
+    "Tóc xoăn búi đỉnh đầu hoặc dái tai dài như Đức Phật",
+    "Đội khăn quấn đầu hay áo gi-lê hở ngực như Kasi Bhàradvàja",
+    "Y nâu đất hoặc y vàng đất của Tỳ kheo/Đức Phật",
+    "Trang sức, hào quang, gậy hoặc chi tiết biếm họa",
+    "Khẳng định diện mạo lịch sử hoặc gán biếm họa cộng đồng"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "T40",
+    "draft": "drafts/character-KANDARAYANA_01-v1-a1",
+    "sha256": "d36ec9696c38f118620c2f88995662677945bdde7556c4eaedfae316c277af40",
+    "note": "Thiết kế minh họa quy ước tạo trong tập T40 cho Bà-la-môn Kandaràyana; ảnh phong cách gốc chỉ gợi nét chì và nền giấy, không khẳng định diện mạo lịch sử."
+  },
+  "review_note": "Đã mở JPEG sau nén (1080x1440): một người đứng tuổi đứng đủ thân chân trần, tóc muối tiêu búi nhỏ sau gáy không khăn đầu, râu ria trắng xám ngắn gọn, áo trắng ngà tay lửng, khăn choàng nâu cát nhạt vai trái, dhoti kem viền nâu mảnh ở gấu, hai tay 5 ngón tự nhiên, nền giấy sạch không chữ. Chưa được người dùng duyệt."
+}

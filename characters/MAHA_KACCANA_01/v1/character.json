@@ -1,0 +1,45 @@
+{
+  "id": "MAHA_KACCANA_01",
+  "name": "Tôn giả Mahà Kaccàna (thiết kế minh họa)",
+  "aliases": [
+    "Mahà Kaccàna",
+    "Maha Kaccana",
+    "Tôn giả Mahà Kaccàna",
+    "Đại Ca Chiên Diên"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam tu sĩ Nam Á khoảng 38–42 tuổi, da nâu sáng ấm dịu, khuôn mặt vuông vắn thanh tú cân đối, trán rộng sáng, lông mày đen thanh đều, mắt nâu trầm tĩnh sâu sắc, mũi thẳng, môi mỉm nhẹ kín đáo trang nghiêm; không râu ria, tai bình thường.",
+    "hair": "Đầu cạo sạch trơn nhẵn, không tóc và không búi đỉnh đầu.",
+    "body": "Vóc dáng trung bình vững chãi cân đối, người trưởng thành, chân trần.",
+    "clothing": "Y tăng vải mềm màu nâu vàng đất đậm trầm (umber-ochre), quấn nếp tự nhiên phủ kín vai trái và vắt qua cánh tay trái, để vai phải trần, không có tay áo dài, không áo lót cổ cao, y dài gần mắt cá chân; không trang sức, không chuỗi hạt."
+  },
+  "keep": [
+    "Giữ gương mặt vuông vắn thanh tú điềm tĩnh khoảng 38–42 tuổi, tai bình thường, đầu cạo sạch không râu.",
+    "Giữ y tăng màu nâu vàng đất đậm trầm phủ vai trái và vắt qua cánh tay trái, vai phải để trần, không tay áo dài, chân trần.",
+    "Chất liệu chì màu 2D nét mảnh, biểu cảm trang nghiêm hiền hòa tiết chế trên nền giấy gần trắng."
+  ],
+  "can_vary": [
+    "Đứng, ngồi, bước đi và tư thế tay tự nhiên",
+    "Hướng nhìn và biểu cảm nhẹ khi thuyết giảng hoặc lắng nghe"
+  ],
+  "avoid": [
+    "Tóc xoăn búi đỉnh đầu hoặc dái tai dài như Đức Phật",
+    "Y tay áo dài phủ hai vai như TYKHEO_01/TYKHEO_02 hoặc y vàng ochre sáng của Đức Phật",
+    "Râu, ria mép, trang sức, hào quang hoặc vật phụ ngoài yêu cầu",
+    "Khẳng định diện mạo lịch sử đã xác minh"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "T40",
+    "draft": "drafts/character-MAHA_KACCANA_01-v1-a1",
+    "sha256": "46bd3567dc8fefcb2eba1345dfb8fd64d17280f09c26d7d0ff1843a5f3455c2c",
+    "note": "Thiết kế minh họa quy ước tạo trong tập T40 cho Tôn giả Mahà Kaccàna; ảnh phong cách gốc chỉ gợi nét chì và nền giấy, không khẳng định diện mạo lịch sử."
+  },
+  "review_note": "Đã mở JPEG sau nén (1080x1440): một vị Tỳ kheo trung niên đứng đủ thân chân trần, đầu cạo sạch, tai bình thường, mặt vuông thanh tú không râu, tay phải buông nhẹ và tay trái giữ mép y 5 ngón tự nhiên, y nâu vàng đất đậm phủ vai trái để trần vai phải, nền giấy sạch không chữ. Chưa được người dùng duyệt."
+}
