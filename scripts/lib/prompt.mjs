@@ -34,15 +34,12 @@ export function slidePrompt(dir, episode, validation, slide, correction) {
   const objectLine = allowedObjectsText
     ? `Vật thể được phép: ${allowedObjectsText}. Không thêm người, vật thể, hào quang hay hiệu ứng ngoài danh sách.`
     : 'Không thêm người, vật thể, hào quang hay hiệu ứng ngoài cảnh yêu cầu.';
-  const tyWithGrave = s.text.normalize('NFC').match(/(?<![\p{L}\p{M}\p{N}])tỳ(?![\p{L}\p{M}\p{N}])/iu)?.[0];
   const content = [
     'Tạo 1 slide minh họa Phật giáo 2D hoàn chỉnh (khung dọc 3:4, mục tiêu 1080 × 1440), có đúng đoạn chữ tiếng Việt bên dưới.',
     '- Phong cách: nét chì màu mảnh, vàng đất/nâu dịu; nền giấy gần trắng, sáng trung tính, không phủ kem/vàng; 1 cụm minh họa gọn, ít chi tiết, nhiều khoảng trắng; biểu cảm trang nghiêm, hiền hòa. Không ảnh chụp, 3D, anime, khung, bong bóng thoại, logo, watermark hay chữ trang trí.',
     '- Bố cục & chữ: bố cục linh hoạt, tranh và chữ đầy đủ, rõ ràng, không che nhau/cắt mép; không thu nhỏ chữ để ép khung. Dùng chữ KHÔNG CHÂN, nét tròn mềm, đều nét, hơi giống chữ viết tay, rõ dấu tiếng Việt, cỡ tương đương 44–52 px khi xuất, màu nâu sẫm #4B2F1E, canh giữa, lề thoáng. Không dùng serif, chữ sách cổ hoặc nét đậm nặng.',
     '',
-    'Chỉ dẫn về chữ (không in): Giữ cả dấu tạo chữ và dấu thanh, đặt đúng vị trí trên hoặc dưới đúng chữ cái. Chép đúng từng dấu câu, kể cả dấu ngoặc kép mở và đóng nếu có. Ảnh mẫu và mô tả cảnh không phải nguồn chữ.',
-    ...(tyWithGrave ? [`Lưu ý dấu huyền (không in dòng này): Ở mọi chỗ có chữ ${tyWithGrave}, dấu huyền nằm trên y, là một nét xiên từ trên trái xuống dưới phải, không có móc. Giữ nguyên hoa/thường và dấu của từng chữ theo văn bản.`] : []),
-    'CHỮ CẦN IN — chỉ in nguyên văn phần giữa hai dòng phân cách (không in dòng phân cách/nhãn, không sửa/thêm/bớt từ hay dấu, không thêm ngoặc kép/tiêu đề/số trang/chú thích):',
+    'CHỮ CẦN IN — chỉ in nguyên văn phần giữa hai dòng phân cách (không in dòng phân cách/nhãn, không sửa/thêm/bớt từ hay dấu, không thêm ngoặc kép/tiêu đề/số trang/chú thích, không chép chữ từ ảnh mẫu):',
     '--- BẮT ĐẦU VĂN BẢN ---',
     s.text,
     '--- KẾT THÚC VĂN BẢN ---',

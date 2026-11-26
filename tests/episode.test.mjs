@@ -14,7 +14,6 @@ import { sha256Bytes } from '../scripts/lib/fingerprint.mjs';
 import { LOOKAHEAD_LOCK, withEpisodeLock } from '../scripts/lib/lock.mjs';
 import { LOOKAHEAD_GUARD } from '../scripts/lib/resume.mjs';
 import { MAX_EPISODE_JSON_BYTES } from '../scripts/lib/policy.mjs';
-import { slidePrompt } from '../scripts/lib/prompt.mjs';
 
 const page = text => ({ text, scene: 'A simple scene', scene_type: 'concept', characters: [] });
 const png = color => execFileSync('magick', ['-size', '20x30', `xc:${color}`, 'png:-']);
@@ -35,25 +34,6 @@ test('allocator is concurrent-safe and ignores the historical fixture', async t 
   await writeFile(join(root, 'local-api-e2e-20261111-v1'), 'fixture');
   const result = await Promise.all(Array.from({ length: 4 }, () => createEpisode(root, 'Title', 'Request')));
   assert.deepEqual(result.map(r => r.code).sort(), ['T1', 'T2', 'T3', 'T4']);
-});
-
-test('slide prompt guides grave accents only for words in the printable text and preserves it verbatim', () => {
-  for (const [value, guided] of [
-    ['“Này các Tỳ kheo, Tỳ kheo!”', 'Tỳ'],
-    ['Vị tỳ kheo.', 'tỳ'],
-    ['Vị TỲ kheo.', 'TỲ'],
-    ['Vị tỳ kheo.'.normalize('NFD'), 'tỳ'],
-    ['Tỳ kheo và Tỷ kheo.', 'Tỳ'],
-    ['Tỷ kheo.', null],
-    ['Tiếng Việt có chữ átỳ.', null],
-  ]) {
-    const slide = { ...page(value), scene: 'Vị Tỳ kheo ôm bình bát.' };
-    const { prompt } = slidePrompt('.', { slides: [slide] }, { resolvedCharsBySlide: [[]] }, 1);
-    const [instructions, printable] = prompt.split('--- BẮT ĐẦU VĂN BẢN ---\n');
-    assert.equal(printable.split('\n--- KẾT THÚC VĂN BẢN ---')[0], value);
-    assert.equal(instructions.includes('Lưu ý dấu huyền'), guided !== null, value);
-    if (guided) assert.ok(instructions.includes(`có chữ ${guided}, dấu huyền nằm trên y`));
-  }
 });
 
 test('sequential draws reuse bytes, require an immediate visual check, and reopen only changed pages', async t => {
