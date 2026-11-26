@@ -23,17 +23,19 @@ export class Telegram {
     this.nextSendAt = 0;
   }
 
-  async call(method, data, timeout = 45_000) {
-    if (this.signal?.aborted) throw new TelegramError({ ambiguous: false, notSent: true });
+  async call(method, data, timeout = 45_000, beforePost) {
     const localTimeout = AbortSignal.timeout(timeout);
+    const options = {
+      method: 'POST', redirect: 'error',
+      ...(data instanceof FormData ? { body: data } : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) }),
+      signal: this.signal ? AbortSignal.any([localTimeout, this.signal]) : localTimeout,
+    };
+    if (this.signal?.aborted) throw new TelegramError({ ambiguous: false, notSent: true });
+    beforePost?.();
     let result;
     let status;
     try {
-      const response = await this.request(`https://api.telegram.org/bot${this.token}/${method}`, {
-        method: 'POST', redirect: 'error',
-        ...(data instanceof FormData ? { body: data } : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) }),
-        signal: this.signal ? AbortSignal.any([localTimeout, this.signal]) : localTimeout,
-      });
+      const response = await this.request(`https://api.telegram.org/bot${this.token}/${method}`, options);
       status = response.status;
       result = await response.json();
     } catch { throw new TelegramError(); }
@@ -53,7 +55,7 @@ export class Telegram {
       message.from?.id === this.owner && message.from.is_bot === false;
   }
 
-  async send(method, data, timeout) {
+  async send(method, data, timeout, beforePost, { retry429 = true } = {}) {
     for (let attempt = 0; ; attempt++) {
       const delay = this.nextSendAt - Date.now();
       if (delay > MAX_RETRY_WAIT_MS) {
@@ -64,23 +66,23 @@ export class Telegram {
         catch { throw new TelegramError({ ambiguous: false, notSent: true }); }
       }
       this.nextSendAt = Date.now() + MIN_SEND_INTERVAL_MS;
-      try { return messageId(await this.call(method, data, timeout)); }
+      try { return messageId(await this.call(method, data, timeout, beforePost)); }
       catch (error) {
         if (error.ambiguous || error.status !== 429) throw error;
         const retryMs = error.retryAfter * 1000;
         this.nextSendAt = Math.max(this.nextSendAt, Date.now() + (retryMs || MAX_RETRY_WAIT_MS));
-        if (attempt || !retryMs || retryMs > MAX_RETRY_WAIT_MS) throw error;
+        if (!retry429 || attempt || !retryMs || retryMs > MAX_RETRY_WAIT_MS) throw error;
       }
     }
   }
 
-  say(text) { return this.send('sendMessage', { chat_id: this.owner, text }); }
+  say(text, beforePost, options) { return this.send('sendMessage', { chat_id: this.owner, text }, undefined, beforePost, options); }
 
-  async document({ name, mime, bytes }) {
+  async document({ name, mime, bytes }, beforePost) {
     const body = new FormData();
     body.set('chat_id', String(this.owner));
     body.set('document', new Blob([bytes], { type: mime }), name);
-    return this.send('sendDocument', body, 120_000);
+    return this.send('sendDocument', body, 120_000, beforePost);
   }
 }
 

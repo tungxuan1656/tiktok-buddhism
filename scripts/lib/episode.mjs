@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { sha256Bytes, sha256Canonical } from './fingerprint.mjs';
 import { confineRelativeFile, confineTargetPath, writeAtomic } from './paths.mjs';
-import { MAX_ATTEMPTS_PER_SLIDE, MAX_IMAGE_BYTES } from './policy.mjs';
+import { MAX_ATTEMPTS_PER_SLIDE, MAX_EPISODE_JSON_BYTES, MAX_IMAGE_BYTES } from './policy.mjs';
 import { attemptIssue, blockingAttempt, episodeAttempts, readRejection, statIfPresent, verifiedDraft, visualAttempts } from './resume.mjs';
 import { imageMime, isSha256, readEpisodeJson, validateEpisodeData } from './schema.mjs';
 
@@ -11,11 +11,19 @@ export const isEpisodeCode = value => typeof value === 'string' && /^T[1-9][0-9]
 export const pad3 = n => String(n).padStart(3, '0');
 export const checkPath = n => `artifact/checks/${pad3(n)}.json`;
 export const imagePath = (n, extension = 'jpg') => `artifact/images/${pad3(n)}.${extension}`;
-export const deliverableStatus = status => ['ready_for_review', 'approved', 'published'].includes(status);
+const deliverableStatuses = ['ready_for_review', 'approved', 'published'];
+const maxDeliverableStatusLength = Math.max(...deliverableStatuses.map(status => status.length));
+export const deliverableStatus = status => deliverableStatuses.includes(status);
 const validStatus = status => ['draft', 'locked'].includes(status) || deliverableStatus(status);
 const allowedImagePath = (file, n) => ['jpg', 'jpeg', 'png'].some(ext => file === imagePath(n, ext));
 
-export const writeEpisode = async (dir, ep) => writeAtomic(await confineTargetPath(dir, EPISODE_JSON), `${JSON.stringify(ep, null, 2)}\n`);
+export async function writeEpisode(dir, ep) {
+  const json = `${JSON.stringify(ep, null, 2)}\n`;
+  // A locked script must still fit when finalized.
+  const growth = ep.status === 'locked' ? maxDeliverableStatusLength - ep.status.length : 0;
+  if (Buffer.byteLength(json) + growth > MAX_EPISODE_JSON_BYTES) throw new Error('Episode JSON too large');
+  await writeAtomic(await confineTargetPath(dir, EPISODE_JSON), json);
+}
 export const readEpisode = dir => readEpisodeJson(join(dir, EPISODE_JSON), dir);
 
 export function assertEpisodeIdentity(dir, ep) {
@@ -55,8 +63,8 @@ export async function imageBytes(dir, file) {
 async function slideCheck(dir, slide, fingerprint) {
   const file = checkPath(slide);
   if (!await statIfPresent(join(dir, file))) return null;
-  const check = await readEpisodeJson(join(dir, file), dir);
-  if (check.slide_content_sha256 !== fingerprint || !allowedImagePath(check.image, slide) ||
+  const check = await readEpisodeJson(join(dir, file), dir).catch(() => null);
+  if (!check || check.slide_content_sha256 !== fingerprint || !allowedImagePath(check.image, slide) ||
     !isSha256(check.image_sha256) || (!isSha256(check.request_sha256) && check.legacy !== true) ||
     check.visual_check?.passed !== true || typeof check.visual_check.note !== 'string' || !check.visual_check.note.trim()) return null;
   const note = await readRejection(dir, fingerprint, check.image_sha256);
@@ -84,8 +92,7 @@ export async function episodeBundle(dir) {
 }
 
 export async function blockingEpisodeAttempt(dir) {
-  const attempt = blockingAttempt(await episodeAttempts(dir));
-  return attempt ? attemptIssue(dir, attempt) : null;
+  return blockingAttempt(await episodeAttempts(dir));
 }
 
 export async function pageState(dir, slide, fp, attempts) {

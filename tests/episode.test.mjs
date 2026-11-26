@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createEpisode, changeEpisode, episodeHandoff, rejectImage } from '../scripts/episode-tools.mjs';
 import { draw, recoverAttempt } from '../scripts/draw-image.mjs';
 import { exportSlide } from '../scripts/export-slide.mjs';
-import { checkPath, episodeBundle, loadValidated, readEpisode, writeEpisode } from '../scripts/lib/episode.mjs';
+import { checkPath, EPISODE_JSON, episodeBundle, loadValidated, readEpisode, writeEpisode } from '../scripts/lib/episode.mjs';
 import { sha256Bytes } from '../scripts/lib/fingerprint.mjs';
+import { MAX_EPISODE_JSON_BYTES } from '../scripts/lib/policy.mjs';
 
 const page = text => ({ text, scene: 'A simple scene', scene_type: 'concept', characters: [] });
 const png = color => execFileSync('magick', ['-size', '20x30', `xc:${color}`, 'png:-']);
@@ -121,6 +122,10 @@ test('normalization recovers the recorded response without sending another POST'
   assert.equal(handoff.next, 'resolve_attempt');
   assert.equal(handoff.blocked.code, 'IMG_DRAFT_DAMAGED');
   assert.equal(handoff.blocked.raw_recoverable, true);
+  const receipt = join(dir, handoff.blocked.path, 'status.json');
+  const before = await readFile(receipt);
+  await assert.rejects(recoverAttempt(dir, handoff.blocked.path, { note: 'Discard' }), /use --normalize/);
+  assert.deepEqual(await readFile(receipt), before);
   await assert.rejects(draw({ episodeDir: dir, slide: 1, request: () => assert.fail('unexpected POST') }), /run handoff/);
   const output = execFileSync(process.execPath, ['scripts/draw-image.mjs', '--normalize', dir, `./${handoff.blocked.path}`], { encoding: 'utf8' });
   assert.equal(output.trim(), work);
@@ -141,6 +146,135 @@ test('normalization recovers the recorded response without sending another POST'
   assert.equal(await recoverAttempt(dir, handoff.blocked.name), work);
   assert.equal((await episodeHandoff(dir)).next, 'review');
   assert.equal(calls, 1);
+});
+
+test('a missing or failing decoder cannot discard a saved image', async t => {
+  const dir = await locked(t, [page('Page one.')]);
+  const raw = png('white');
+  const draft = await draw({ episodeDir: dir, slide: 1, request: () => new Response(raw) });
+  await rm(draft);
+  const { blocked } = await episodeHandoff(dir);
+  const status = join(dir, blocked.path, 'status.json');
+  const saved = await readFile(status);
+  const bin = await temp(t);
+  const run = (script, ...args) => spawnSync(process.execPath, [`scripts/${script}.mjs`, ...args], {
+    encoding: 'utf8', env: { PATH: bin },
+  });
+  for (const unavailable of [true, false]) {
+    if (!unavailable) await writeFile(join(bin, 'magick'), `#!/bin/sh
+printf "identify: memory allocation failed \\140%s' @ error/png.c/ReadPNGImage/1.\\n" "$5" >&2
+exit 1
+`, { mode: 0o700 });
+    const result = run('draw-image', '--reconcile', dir, blocked.path, '--note', 'Discard');
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /ImageMagick.*before reconciling/);
+    assert.deepEqual(await readFile(status), saved);
+    const handoff = run('episode-tools', 'handoff', dir);
+    assert.equal(handoff.status, 0);
+    const resultState = JSON.parse(handoff.stdout);
+    assert.equal(resultState.next, 'resolve_attempt');
+    assert.equal(resultState.blocked.raw_recoverable, null);
+    assert.match(resultState.blocked.raw_issue, /ImageMagick/);
+  }
+  assert.equal(await recoverAttempt(dir, blocked.path), draft);
+});
+
+test('a hash-valid HTTP 200 JSON response is not a recoverable image', async t => {
+  const dir = await locked(t, [page('Page one.')]);
+  const response = '{"message":"no image"}';
+  await assert.rejects(draw({ episodeDir: dir, slide: 1, request: () => new Response(response) }), /Do not retry/);
+  const { blocked } = await episodeHandoff(dir);
+  assert.equal(blocked.state, 'normalize_failed');
+  assert.equal(blocked.raw_recoverable, false);
+  assert.equal(await readFile(join(dir, blocked.path, 'response.bin'), 'utf8'), response);
+  await assert.rejects(recoverAttempt(dir, blocked.path), /No verified response image/);
+  await recoverAttempt(dir, blocked.path, { note: 'Confirmed no image and resolved the cause' });
+  assert.equal((await episodeHandoff(dir)).next, 'draw');
+});
+
+test('a confirmed corrupt image stays on disk and requires reconciliation before another draw', async t => {
+  const pngBytes = png('white');
+  const jpegBytes = execFileSync('magick', ['-size', '20x30', 'xc:white', 'jpeg:-']);
+  const badCrc = Buffer.from(pngBytes);
+  badCrc[29] ^= 1; // First byte of the IHDR checksum.
+  for (const [label, raw] of [
+    ['truncated PNG header', pngBytes.subarray(0, 20)],
+    ['truncated PNG data', pngBytes.subarray(0, -2)],
+    ['bad PNG header checksum', badCrc],
+    ['truncated JPEG data', jpegBytes.subarray(0, -2)],
+  ]) await t.test(label, async t => {
+    const dir = await locked(t, [page('Page one.')]);
+    await assert.rejects(draw({ episodeDir: dir, slide: 1, request: () => new Response(raw) }), /Do not retry/);
+    const { blocked, next } = await episodeHandoff(dir);
+    assert.equal(next, 'resolve_attempt');
+    assert.equal(blocked.state, 'normalize_failed');
+    assert.equal(blocked.raw_recoverable, false);
+    await assert.rejects(recoverAttempt(dir, blocked.path), /No verified response image/);
+    await assert.rejects(draw({ episodeDir: dir, slide: 1, request: () => assert.fail('unexpected POST') }), /Episode blocked/);
+    const note = `Confirmed the saved image is corrupt: ${label}`;
+    await recoverAttempt(dir, blocked.path, { note });
+    const dirAttempt = join(dir, blocked.path);
+    assert.equal(JSON.parse(await readFile(join(dirAttempt, 'status.json'))).reconcile_note, note);
+    assert.deepEqual(await readFile(join(dirAttempt, 'response.bin')), raw);
+    assert.equal((await episodeHandoff(dir)).page.attempt, '001-a2');
+  });
+});
+
+test('malformed slide receipts leave the intact draft available for review and export', async t => {
+  const dir = await locked(t, [page('Page one.')]);
+  const draft = relative(dir, await draw({ episodeDir: dir, slide: 1, request: () => new Response(png('white')) }));
+  await exportSlide(dir, draft, 'Original check');
+  for (const invalid of ['{', 'null']) {
+    await writeFile(join(dir, checkPath(1)), invalid);
+    assert.equal((await episodeHandoff(dir)).next, 'review');
+    assert.equal((await exportSlide(dir, draft, 'Checked the same draft again')).action, 'exported');
+  }
+  assert.equal((await episodeHandoff(dir)).next, 'finalize');
+});
+
+test('export cannot replace the final JPEG when the receipt is a directory', async t => {
+  const dir = await locked(t, [page('Page one.')]);
+  const draft = relative(dir, await draw({ episodeDir: dir, slide: 1, request: () => new Response(png('white')) }));
+  const { file } = await exportSlide(dir, draft, 'Original check');
+  const receipt = join(dir, checkPath(1));
+  await rm(receipt);
+  await mkdir(receipt);
+  const previous = execFileSync('magick', ['-size', '1080x1440', 'xc:green', 'jpg:-']);
+  await writeFile(join(dir, file), previous);
+  await assert.rejects(exportSlide(dir, draft, 'Checked draft'), /receipt destination is not a regular file/);
+  assert.deepEqual(await readFile(join(dir, file)), previous);
+});
+
+test('locking cannot replace a readable episode with JSON over the size limit', async t => {
+  const { dir } = await createEpisode(await temp(t), 'Test', 'Original request');
+  const ep = { ...await readEpisode(dir), slides: [page('Page one.')], padding: '' };
+  const size = Buffer.byteLength(`${JSON.stringify(ep, null, 2)}\n`);
+  ep.padding = 'x'.repeat(MAX_EPISODE_JSON_BYTES - size);
+  await writeEpisode(dir, ep);
+  const file = join(dir, EPISODE_JSON);
+  const old = await readFile(file);
+  assert.equal(old.length, MAX_EPISODE_JSON_BYTES);
+  await assert.rejects(changeEpisode(dir, 'lock'), /Episode JSON too large/);
+  assert.deepEqual(await readFile(file), old);
+  assert.equal((await episodeHandoff(dir)).next, 'prepare_script');
+});
+
+test('locking reserves space for the final status at the JSON size limit', async t => {
+  const { dir } = await createEpisode(await temp(t), 'Test', 'Original request');
+  const ep = { ...await readEpisode(dir), slides: [page('Page one.')], padding: '' };
+  const size = Buffer.byteLength(`${JSON.stringify({ ...ep, locked_sha256: '0'.repeat(64), status: 'ready_for_review' }, null, 2)}\n`);
+  ep.padding = 'x'.repeat(MAX_EPISODE_JSON_BYTES - size + 1);
+  await writeEpisode(dir, ep);
+  await assert.rejects(changeEpisode(dir, 'lock'), /Episode JSON too large/);
+  assert.equal((await readEpisode(dir)).status, 'draft');
+
+  ep.padding = ep.padding.slice(1);
+  await writeEpisode(dir, ep);
+  await changeEpisode(dir, 'lock');
+  const draft = await draw({ episodeDir: dir, slide: 1, request: () => new Response(png('white')) });
+  await exportSlide(dir, relative(dir, draft), 'Checked');
+  assert.equal((await changeEpisode(dir, 'finalize')).status, 'ready_for_review');
+  assert.equal((await stat(join(dir, EPISODE_JSON))).size, MAX_EPISODE_JSON_BYTES);
 });
 
 test('a rejected migrated artifact supplies the repair note without a draft', async t => {
@@ -222,6 +356,25 @@ test('historical quote exceptions do not apply when an episode is reopened', asy
   assert.equal((await loadValidated(dir, { requireLock: false })).validation.ok, true);
   await changeEpisode(dir, 'reopen');
   await assert.rejects(changeEpisode(dir, 'lock'), /Verbatim check failed/);
+});
+
+test('an unused successful character draft does not block handoff but unresolved attempts do', async t => {
+  const { dir } = await createEpisode(await temp(t), 'Test', 'Original request');
+  const ep = await readEpisode(dir);
+  const id = 'TEST_CHARACTER';
+  const version = 'v1';
+  const slides = [{ ...page('A person.'), characters: [{ id, version }] }];
+  await writeEpisode(dir, { ...ep, slides });
+  const promptFile = join(dir, 'character-prompt.txt');
+  await writeFile(promptFile, 'One character, no text.');
+  const draft = await draw({ episodeDir: dir, target: `${id}/${version}`, promptFile, request: () => new Response(png('white')) });
+  await rm(draft);
+  assert.equal((await episodeHandoff(dir)).blocked.code, 'IMG_DRAFT_DAMAGED');
+  await writeEpisode(dir, { ...ep, slides: [page('No characters.')] });
+  assert.equal((await episodeHandoff(dir)).next, 'prepare_script');
+  const status = join(draft, '..', 'status.json');
+  await writeFile(status, JSON.stringify({ ...JSON.parse(await readFile(status)), state: 'in_flight' }));
+  assert.equal((await episodeHandoff(dir)).next, 'resolve_attempt');
 });
 
 test('missing character is generated once and its pinned image is sent with the slide', async t => {

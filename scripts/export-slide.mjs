@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { checkPath, checkedSlide, episodePages, imagePath, loadValidated } from './lib/episode.mjs';
 import { withEpisodeLock } from './lib/lock.mjs';
 import { confineRelativeFile, confineTargetPath, stripDotSlash, writeAtomic } from './lib/paths.mjs';
-import { blockingAttempt, episodeAttempts, readRejection } from './lib/resume.mjs';
+import { blockingAttempt, episodeAttempts, readRejection, statIfPresent } from './lib/resume.mjs';
 import { readImageInfo } from './lib/schema.mjs';
 
 export async function exportSlide(dir, file, note) {
@@ -29,6 +29,8 @@ export async function exportSlide(dir, file, note) {
     const image = imagePath(slide);
     const output = await confineTargetPath(dir, image);
     const check = await confineTargetPath(dir, checkPath(slide));
+    const receipt = await statIfPresent(check);
+    if (receipt && !receipt.isFile()) throw new Error(`Slide receipt destination is not a regular file: ${checkPath(slide)}`);
     await mkdir(dirname(output), { recursive: true });
     // Keep the draft reachable until the check is published; a crash is recoverable without another POST.
     const staging = await mkdtemp(join(dirname(output), '.export-'));

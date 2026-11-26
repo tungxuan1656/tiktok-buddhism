@@ -4,7 +4,7 @@ module.exports = {
   apps: [{
     name: 'buddhism-telegram',
     cwd: __dirname,
-    script: join(__dirname, 'telegram/main.mjs'),
+    script: join(__dirname, 'telegram/cli.mjs'),
     interpreter: process.execPath,
     node_args: [`--env-file=${join(__dirname, '.env')}`],
     exec_mode: 'fork',
@@ -17,8 +17,6 @@ module.exports = {
     kill_timeout: 10000,
     filter_env: ['TELEGRAM_'],
     env: { PATH: `${dirname(process.execPath)}:${process.env.PATH || '/usr/bin:/bin'}` },
-    out_file: join(__dirname, '.telegram/service.log'),
-    error_file: join(__dirname, '.telegram/service.log'),
     merge_logs: true,
     time: true,
   }],

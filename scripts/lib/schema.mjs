@@ -35,13 +35,26 @@ export function imageMime(bytes) {
   throw new Error('Expected a PNG or JPEG image');
 }
 
-export async function readImageInfo(path, { requireNormalized1080 = false, includeBytes = false, maxBytes = MAX_IMAGE_BYTES } = {}) {
+export class ImageDecoderError extends Error {}
+
+export async function readImageInfo(path, { requireNormalized1080 = false, includeBytes = false, maxBytes = MAX_IMAGE_BYTES, expectedSha256 } = {}) {
   const st = await stat(path);
   if (!st.isFile() || st.size <= 0 || st.size > maxBytes) throw new Error('Invalid image size');
   const bytes = await readFile(path);
   if (!bytes.length || bytes.length > maxBytes) throw new Error('Invalid image size');
+  const sha256 = sha256Bytes(bytes);
+  if (expectedSha256 !== undefined && sha256 !== expectedSha256) throw new Error('Image hash changed');
   const mime = imageMime(bytes);
-  const { stdout } = await exec('magick', ['identify', '-regard-warnings', '-format', '%m %w %h %n', path], { timeout: 30_000 });
+  const { stdout } = await exec('magick', ['identify', '-regard-warnings', '-format', '%m %w %h %n', path], {
+    timeout: 30_000, env: { ...process.env, LC_ALL: 'C' },
+  }).catch(cause => {
+    // shortcut: unknown diagnostics stay blocked; extend the allowlist only with verified corrupt samples.
+    const corrupt = /^identify: (?:insufficient image data in file|unexpected end-of-file|Premature end of JPEG file|[A-Z]{4}: (?:CRC error|incorrect (?:header|data) check)) `' @ (?:error|warning)\/(?:png|jpeg)\.c\//m;
+    if (cause.code === 1 && corrupt.test(cause.stderr?.replaceAll(path, ''))) {
+      throw new Error('Corrupt PNG or JPEG image', { cause });
+    }
+    throw new ImageDecoderError('ImageMagick could not verify the image', { cause });
+  });
   const match = /^(PNG|JPEG) (\d+) (\d+) 1$/.exec(stdout);
   if (!match || (mime === 'image/png') !== (match[1] === 'PNG')) throw new Error('Invalid or multiple images');
   const width = Number(match[2]);
@@ -49,7 +62,7 @@ export async function readImageInfo(path, { requireNormalized1080 = false, inclu
   if (requireNormalized1080 && (width !== OUTPUT_WIDTH || height !== OUTPUT_HEIGHT)) {
     throw new Error(`Expected ${OUTPUT_WIDTH}x${OUTPUT_HEIGHT} image, got ${width}x${height}`);
   }
-  const info = { mime, width, height, bytes: bytes.length, sha256: sha256Bytes(bytes) };
+  const info = { mime, width, height, bytes: bytes.length, sha256 };
   if (includeBytes) info.buffer = bytes;
   return info;
 }

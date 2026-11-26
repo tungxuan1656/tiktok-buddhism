@@ -129,8 +129,7 @@ export async function draw({ episodeDir, slide, target, promptFile, references =
 }
 
 async function normalizeImage(raw, dir, expectedHash) {
-  const source = await readImageInfo(raw);
-  if (source.sha256 !== expectedHash) throw new Error('Recorded response changed');
+  const source = await readImageInfo(raw, { expectedSha256: expectedHash });
   const staging = await mkdtemp(join(dir, '.normalize-'));
   try {
     const output = join(staging, 'image.jpg');
@@ -199,13 +198,14 @@ export async function recoverAttempt(episodeDir, name, { note } = {}) {
     if (!attempt || (blocked ? attempt !== blocked : !damaged)) throw new Error('Select the blocking or damaged attempt from handoff');
     const work = join(dir, attempt.path);
     const status = await readEpisodeJson(join(work, 'status.json'), dir);
+    const raw = await verifiedRawResponse(dir, attempt);
     if (note !== undefined) {
       if (typeof note !== 'string' || !note.trim() || Buffer.byteLength(note) > 4000) throw new Error('Reconciliation requires an explanation (up to 4000 bytes)');
+      if (raw) throw new Error('Verified response image is recoverable; use --normalize instead of --reconcile');
       await saveStatus(work, { ...status, previous_state: status.state, state: 'reconciled_failed', reconcile_note: note.trim() });
       return { reconciled: attempt.path };
     }
-    const raw = await verifiedRawResponse(dir, attempt);
-    if (!raw) throw new Error('No verified response to recover; reconcile with the server before resending');
+    if (!raw) throw new Error('No verified response image to recover; reconcile with the server before resending');
     try {
       const result = await normalizeImage(raw, work, attempt.response_sha256);
       await saveStatus(work, { ...status, ...result, state: 'succeeded' });

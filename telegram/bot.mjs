@@ -3,25 +3,43 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { assertEpisodeIdentity, blockingEpisodeAttempt, deliverableStatus, episodeBundle, imageBytes, isEpisodeCode, readEpisode } from '../scripts/lib/episode.mjs';
 import { withEpisodeLock } from '../scripts/lib/lock.mjs';
-import { statIfPresent } from '../scripts/lib/resume.mjs';
+import { imageError, statIfPresent } from '../scripts/lib/resume.mjs';
+import { TelegramError } from './api.mjs';
 
 const states = { draft: 'đang soạn hoặc chỉnh', locked: 'đang làm ảnh', ready_for_review: 'đã xong, chờ duyệt', approved: 'đã duyệt', published: 'đã đăng' };
 const label = ep => `${ep.code}: "${ep.title.replace(/\s+/g, ' ').trim()}"`;
 const encoder = new TextEncoder();
 const content = ep => `${ep.title}\n\n${ep.slides.map((page, i) => `--- ${i + 1} ---\n${page.text}`).join('\n\n')}\n`;
 const number = code => Number(code.slice(1));
+// A fetched update can already be a day old; Telegram resets IDs after a week of inactivity.
+const CURSOR_TTL_MS = 5 * 24 * 60 * 60 * 1000;
 
 export function openDelivery(path) {
   const db = new DatabaseSync(path);
-  db.exec(`CREATE TABLE IF NOT EXISTS cursor (id INTEGER PRIMARY KEY CHECK(id = 1), offset INTEGER NOT NULL);
+  db.exec(`CREATE TABLE IF NOT EXISTS cursor (id INTEGER PRIMARY KEY CHECK(id = 1), offset INTEGER NOT NULL, fetched_at INTEGER);
     CREATE TABLE IF NOT EXISTS notices (key TEXT PRIMARY KEY, message_id INTEGER, retry_at INTEGER);`);
-  const updateOffset = db.prepare('INSERT INTO cursor VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET offset = excluded.offset WHERE excluded.offset > offset');
+  if (!db.prepare('PRAGMA table_info(cursor)').all().some(column => column.name === 'fetched_at')) {
+    db.exec('ALTER TABLE cursor ADD COLUMN fetched_at INTEGER');
+  }
+  const cursor = db.prepare('SELECT offset, fetched_at FROM cursor WHERE id = 1');
+  const clearCursor = db.prepare('DELETE FROM cursor WHERE id = 1');
+  const updateOffset = db.prepare(`INSERT INTO cursor (id, offset, fetched_at) VALUES (1, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET offset = excluded.offset, fetched_at = excluded.fetched_at WHERE excluded.offset > offset`);
   const getNotice = db.prepare('SELECT * FROM notices WHERE key = ?');
   const markNotice = db.prepare('INSERT OR REPLACE INTO notices VALUES (?, ?, ?)');
   return {
     close: () => db.close(),
-    offset: () => db.prepare('SELECT offset FROM cursor WHERE id = 1').get()?.offset ?? 0,
-    consume: offset => updateOffset.run(offset).changes === 1,
+    offset: () => cursor.get()?.offset ?? 0,
+    pollCursor: () => {
+      const row = cursor.get();
+      if (!row) return { offset: 0 };
+      if (row.fetched_at === null) return { offset: 0, legacyOffset: row.offset };
+      if (Date.now() - row.fetched_at < CURSOR_TTL_MS) return { offset: row.offset };
+      clearCursor.run();
+      return { offset: 0 };
+    },
+    clearCursor: () => clearCursor.run(),
+    consume: (offset, fetchedAt) => updateOffset.run(offset, fetchedAt).changes === 1,
     noticeStatus: key => {
       const row = getNotice.get(key);
       if (!row || row.retry_at !== null && row.retry_at <= Date.now()) return 'due';
@@ -52,60 +70,73 @@ export class Bot {
     return ep;
   }
 
-  async update(update) {
-    if (!Number.isSafeInteger(update?.update_id) || update.update_id < 0 || !this.delivery.consume(update.update_id + 1)) return;
+  async update(update, fetchedAt = Date.now()) {
+    const id = update?.update_id;
+    if (!Number.isSafeInteger(id) || id < 0 || id === Number.MAX_SAFE_INTEGER) return;
+    const offset = id + 1;
+    if (offset <= this.delivery.offset()) return;
+    let consumed = false;
+    const consume = () => {
+      if (!consumed) {
+        if (!this.delivery.consume(offset, fetchedAt)) throw new Error('Telegram update already consumed');
+        consumed = true;
+      }
+    };
     const message = update.message;
-    if (!this.telegram.authorized(message) || typeof message.text !== 'string') return;
-    const [command, arg, ...extra] = message.text.trim().split(/\s+/);
-    if (command === '/episodes' && !arg) return this.list();
-    if (command === '/get' && isEpisodeCode(arg) && !extra.length) return this.sendEpisode(arg);
-    if (command === '/start' || command === '/help' || command === '/get') {
-      await this.telegram.say('Dùng /episodes để xem danh sách. Ví dụ: /get T34 để lấy ảnh gốc cùng nội dung.');
-    }
+    const authorized = this.telegram.authorized(message) && typeof message.text === 'string';
+    const [command, arg, ...extra] = authorized ? message.text.trim().split(/\s+/) : [];
+    if (command === '/get' && isEpisodeCode(arg) && !extra.length) await this.sendEpisode(arg, consume);
+    else if (command === '/episodes' && !arg) await this.list(consume);
+    else if (command === '/start' || command === '/help' || command === '/get') {
+      await this.telegram.say('Dùng /episodes để xem danh sách. Ví dụ: /get T34 để lấy ảnh gốc cùng nội dung.', consume);
+    } else consume();
+    return consumed;
   }
 
-  async list() {
+  async list(beforePost) {
     let text = 'Danh sách tập:\n';
     let count = 0;
     for (const code of await this.codes()) {
       let ep;
       try { ep = await this.episode(code); } catch { continue; }
       const line = `${label(ep)} — ${states[ep.status]}\n`;
-      if (text.length + line.length > 3900) { await this.telegram.say(text.trimEnd()); text = ''; }
+      if (text.length + line.length > 3900) { await this.telegram.say(text.trimEnd(), beforePost); text = ''; }
       count++;
       text += line;
     }
-    await this.telegram.say(count ? text.trimEnd() : 'Chưa có tập nào.');
+    await this.telegram.say(count ? text.trimEnd() : 'Chưa có tập nào.', beforePost);
   }
 
-  async sendEpisode(code) {
+  async sendEpisode(code, beforePost) {
     const dir = join(this.root, code);
-    if (!(await statIfPresent(dir))?.isDirectory()) return this.telegram.say(`Không tìm thấy ${code}.`);
+    const say = text => this.telegram.say(text, beforePost);
+    if (!(await statIfPresent(dir))?.isDirectory()) return say(`Không tìm thấy ${code}.`);
     let sent = 0;
     let total = 0;
     try {
       await withEpisodeLock(dir, async () => {
         const ep = await this.episode(code);
-        if (!deliverableStatus(ep.status)) return this.telegram.say(`${label(ep)} đang làm hoặc đang chỉnh; chưa có bộ ảnh để gửi.`);
+        if (!deliverableStatus(ep.status)) return say(`${label(ep)} đang làm hoặc đang chỉnh; chưa có bộ ảnh để gửi.`);
         let bundle;
         try { bundle = await episodeBundle(dir); }
-        catch { return this.telegram.say(`${label(ep)} ${ep.status === 'published' ? 'đã đăng nhưng không có' : 'chưa có'} đủ ảnh thành phẩm xác minh được.`); }
+        catch { return say(`${label(ep)} ${ep.status === 'published' ? 'đã đăng nhưng không có' : 'chưa có'} đủ ảnh thành phẩm xác minh được.`); }
         total = bundle.files.length + 1;
         for (const file of bundle.files) {
           const image = await imageBytes(dir, file.file);
           if (image.sha256 !== file.sha256) throw new Error('Image changed after verification');
-          await this.telegram.document({ name: `${code}-${file.file.split('/').at(-1)}`, ...image });
+          await this.telegram.document({ name: `${code}-${file.file.split('/').at(-1)}`, ...image }, beforePost);
           sent++;
         }
-        await this.telegram.document({ name: `${code}-noi-dung.txt`, mime: 'text/plain; charset=utf-8', bytes: encoder.encode(content(bundle.episode)) });
+        await this.telegram.document({ name: `${code}-noi-dung.txt`, mime: 'text/plain; charset=utf-8', bytes: encoder.encode(content(bundle.episode)) }, beforePost);
         sent++;
       }, { timeoutMs: 0 });
     } catch (error) {
       if (total) {
         if (this.telegram.signal?.aborted || error.status === 403) return;
-        try { await this.telegram.say(`${code}: Telegram xác nhận ${sent}/${total} tệp. Hãy kiểm tra chat trước khi dùng lại /get ${code}.`); }
+        if (!sent && !(error instanceof TelegramError)) throw error;
+        try { await say(`${code}: Telegram xác nhận ${sent}/${total} tệp. Hãy kiểm tra chat trước khi dùng lại /get ${code}.`); }
         catch { this.log('Telegram partial delivery status not confirmed.'); }
-      } else if (error.message.startsWith('Timed out waiting for episode lock')) await this.telegram.say(`${code} đang được xử lý; thử lại khi tập đã xong.`);
+      } else if (error.message.startsWith('Timed out waiting for episode lock')) await say(`${code} đang được xử lý; thử lại khi tập đã xong.`);
       else throw error;
     }
   }
@@ -114,12 +145,17 @@ export class Bot {
     const status = this.delivery.noticeStatus(key);
     if (status !== 'due') return status === 'settled';
     if (this.telegram.signal?.aborted) return false;
-    // Reserving before the POST avoids repeating an unconfirmed send after a crash.
-    this.delivery.markNotice(key);
-    try { this.delivery.markNotice(key, await this.telegram.say(message)); }
-    catch (error) {
+    let reserved = false;
+    try {
+      const id = await this.telegram.say(message, () => {
+        // Reserve only at dispatch so a crash during the send delay leaves the notice due.
+        this.delivery.markNotice(key);
+        reserved = true;
+      }, { retry429: false });
+      this.delivery.markNotice(key, id);
+    } catch (error) {
       this.log('Telegram notification not confirmed.');
-      if (!error.ambiguous && (error.notSent || error.status === 429 || error.status === 403)) {
+      if (error instanceof TelegramError && !error.ambiguous && (error.notSent || error.status === 429 || error.status === 403)) {
         let delay = 0;
         if (error.status === 403) delay = 60;
         else if (error.status === 429) delay = error.retryAfter || 30;
@@ -127,7 +163,7 @@ export class Bot {
         return false;
       }
     }
-    return true;
+    return reserved;
   }
 
   async scan() {
@@ -143,7 +179,8 @@ export class Bot {
           const error = await blockingEpisodeAttempt(dir);
           if (error) {
             const uncertain = error.state === 'in_flight' || error.state === 'unknown';
-            return { key: `error:${code}:${error.path}:${error.code}`, message: `${label(ep)} đang dừng ở ${error.slide ? `ảnh ${error.slide}` : 'mẫu nhân vật'} — ${error.code}${uncertain ? ', chưa rõ API đã tạo ảnh hay chưa' : ''}.` };
+            const errorCode = imageError(error);
+            return { key: `error:${code}:${error.path}:${errorCode}`, message: `${label(ep)} đang dừng ở ${error.plan.slide ? `ảnh ${error.plan.slide}` : 'mẫu nhân vật'} — ${errorCode}${uncertain ? ', chưa rõ API đã tạo ảnh hay chưa' : ''}.` };
           }
           if (!deliverableStatus(ep.status)) return null;
           const bundle = await episodeBundle(dir);

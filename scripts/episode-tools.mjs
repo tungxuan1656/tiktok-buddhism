@@ -5,7 +5,7 @@ import { assertEpisodeIdentity, blockingEpisodeAttempt, deliverableStatus, episo
 import { withEpisodeLock } from './lib/lock.mjs';
 import { confineTargetPath, stripDotSlash, writeAtomic } from './lib/paths.mjs';
 import { REPO_ROOT } from './lib/policy.mjs';
-import { attemptIssue, episodeAttempts, readRejection, rejectionPath, statIfPresent, verifiedDraft } from './lib/resume.mjs';
+import { attemptIssue, episodeAttempts, imageError, readRejection, rejectionPath, statIfPresent, verifiedDraft } from './lib/resume.mjs';
 import { slidePrompt } from './lib/prompt.mjs';
 
 export async function createEpisode(root, title, request) {
@@ -31,7 +31,7 @@ export async function createEpisode(root, title, request) {
 
 async function ensureUnblocked(dir) {
   const attempt = await blockingEpisodeAttempt(dir);
-  if (attempt) throw new Error(`Episode blocked by ${attempt.path} (${attempt.code}); run handoff`);
+  if (attempt) throw new Error(`Episode blocked by ${attempt.path} (${imageError(attempt)}); run handoff`);
 }
 
 export async function changeEpisode(dir, command) {
@@ -84,15 +84,17 @@ export async function episodeHandoff(dir) {
     assertEpisodeIdentity(dir, episode);
     const base = { code: episode.code, title: episode.title, status: episode.status };
     const blocked = await blockingEpisodeAttempt(dir);
-    if (blocked) return { ...base, next: 'resolve_attempt', blocked };
+    if (blocked) return { ...base, next: 'resolve_attempt', blocked: await attemptIssue(dir, blocked) };
     if (deliverableStatus(episode.status)) {
       try { return { ...base, next: 'done', files: (await episodeBundle(dir)).files.map(f => f.file) }; }
       catch (error) { return { ...base, next: 'inspect_artifact', issue: error.message }; }
     }
     const attempts = await episodeAttempts(dir);
     if (episode.status === 'draft') {
+      const planned = new Set((Array.isArray(episode.slides) ? episode.slides : []).flatMap(slide =>
+        Array.isArray(slide?.characters) ? slide.characters.map(c => `${c?.id}/${c?.version}`) : []));
       const character_drafts = [];
-      for (const a of attempts.filter(a => a.plan.character && a.state === 'succeeded')) {
+      for (const a of attempts.filter(a => a.plan.character && a.state === 'succeeded' && planned.has(a.plan.target))) {
         const [id, version] = a.plan.target.split('/');
         if (!await statIfPresent(join(dir, 'references', id, version, 'character.json')) &&
             !await readRejection(dir, a.slide_content_sha256, a.output?.sha256)) {
@@ -110,9 +112,9 @@ export async function episodeHandoff(dir) {
   }, { timeoutMs: 0 });
 }
 
-export async function rejectImage(dir, file, note) {
+export async function rejectImage(dir, input, note) {
   if (typeof note !== 'string' || !note.trim() || Buffer.byteLength(note) > 4000) throw new Error('Describe the visual fault (up to 4000 bytes)');
-  file = stripDotSlash(file);
+  const file = stripDotSlash(input);
   return withEpisodeLock(dir, async () => {
     await ensureUnblocked(dir);
     const episode = await readEpisode(dir);

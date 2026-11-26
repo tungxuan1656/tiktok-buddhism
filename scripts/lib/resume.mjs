@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { sha256Bytes } from './fingerprint.mjs';
 import { MAX_EPISODE_JSON_BYTES, MAX_IMAGE_BYTES, RECONCILED_STATES, UNRESOLVED_STATES } from './policy.mjs';
 import { confineRelativeFile } from './paths.mjs';
-import { isSha256 } from './schema.mjs';
+import { ImageDecoderError, isSha256, readImageInfo } from './schema.mjs';
 
 export const statIfPresent = path => lstat(path).catch(error => {
   if (error.code !== 'ENOENT') throw error;
@@ -104,15 +104,26 @@ async function verifiedFile(dir, path, hash) {
 export const verifiedDraft = (dir, attempt) => verifiedFile(dir, `${attempt.path}/image.jpg`, attempt.output?.sha256);
 
 export async function verifiedRawResponse(dir, attempt) {
-  if (!['received', 'normalize_failed', 'succeeded'].includes(attempt.state)) return null;
-  return verifiedFile(dir, `${attempt.path}/response.bin`, attempt.response_sha256);
+  if (!['received', 'normalize_failed', 'succeeded'].includes(attempt.state) || !isSha256(attempt.response_sha256)) return null;
+  try {
+    const { real } = await confineRelativeFile(dir, `${attempt.path}/response.bin`);
+    await readImageInfo(real, { expectedSha256: attempt.response_sha256 });
+    return real;
+  } catch (error) {
+    if (error instanceof ImageDecoderError) throw new ImageDecoderError(`${error.message}; resolve the decoder failure before reconciling`, { cause: error });
+    return null;
+  }
 }
 
 export async function attemptIssue(dir, attempt) {
-  return { path: attempt.path, name: attempt.name, state: attempt.state, slide: attempt.plan.slide ?? null,
+  const issue = { path: attempt.path, name: attempt.name, state: attempt.state, slide: attempt.plan.slide ?? null,
     character: attempt.plan.character ? attempt.plan.target : null,
-    code: attempt.state === 'succeeded' ? 'IMG_DRAFT_DAMAGED' : imageError(attempt),
-    raw_recoverable: !!await verifiedRawResponse(dir, attempt) };
+    code: attempt.state === 'succeeded' ? 'IMG_DRAFT_DAMAGED' : imageError(attempt) };
+  try { return { ...issue, raw_recoverable: !!await verifiedRawResponse(dir, attempt) }; }
+  catch (error) {
+    if (!(error instanceof ImageDecoderError)) throw error;
+    return { ...issue, raw_recoverable: null, raw_issue: error.message };
+  }
 }
 
 export function imageError(attempt) {

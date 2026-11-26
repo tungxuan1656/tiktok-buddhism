@@ -1,8 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { lstat, mkdir } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { pathToFileURL } from 'node:url';
 import { withEpisodeLock } from '../scripts/lib/lock.mjs';
 import { REPO_ROOT } from '../scripts/lib/policy.mjs';
 import { Telegram } from './api.mjs';
@@ -13,12 +12,29 @@ export async function pollUpdates({ telegram, bot, delivery, signal, wait = slee
     try {
       await bot.scan();
       if (signal.aborted) break;
-      const updates = await telegram.poll(delivery.offset());
+      const { offset, legacyOffset } = delivery.pollCursor();
+      const updates = await telegram.poll(offset);
+      const fetchedAt = Date.now();
       if (!Array.isArray(updates)) throw new Error('Invalid Telegram update batch');
+      if (signal.aborted) break;
+      if (legacyOffset !== undefined) {
+        if (!updates.length) delivery.clearCursor();
+        else if (updates.some(update => !Number.isSafeInteger(update?.update_id) || update.update_id < legacyOffset)) {
+          log('Telegram legacy cursor conflicts with pending updates; see docs/telegram.md.');
+          await wait(60_000, undefined, { signal }).catch(() => {});
+          continue;
+        }
+      }
       for (const update of updates) {
         if (signal.aborted) break;
-        try { await bot.update(update); }
-        catch { log('Telegram command did not complete.'); }
+        try {
+          if (await bot.update(update, fetchedAt) !== false) continue;
+        } catch {
+          if (!signal.aborted) log('Telegram command did not complete.');
+        }
+        // Do not let a later update acknowledge a command that is still pending.
+        if (!signal.aborted) await wait(5000, undefined, { signal }).catch(() => {});
+        break;
       }
     } catch (error) {
       if (signal.aborted) break;
@@ -28,7 +44,7 @@ export async function pollUpdates({ telegram, bot, delivery, signal, wait = slee
   }
 }
 
-async function main() {
+export async function main() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const id = process.env.TELEGRAM_USER_ID ?? '';
   const owner = Number(id);
@@ -64,13 +80,4 @@ async function main() {
       await pollUpdates({ telegram, bot, delivery, signal: controller.signal });
     } finally { delivery.close(); }
   }, { timeoutMs: 0 });
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  main().catch(() => {
-    console.error('Telegram bot could not start; check configuration, ImageMagick, .telegram permissions and single-instance lock.');
-    process.exitCode = 1;
-  }).finally(() => {
-    if (process.connected) process.disconnect();
-  });
 }
