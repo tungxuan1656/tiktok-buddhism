@@ -28,7 +28,7 @@ Inspect the current state first:
 node scripts/episode-tools.mjs handoff episodes/Tn
 ```
 
-If the episode is blocked by `resolve_attempt`, resolve the blocked attempt per `docs/image-api.md` before reopening or locking.
+If handoff lists an active `in_progress` image, wait for it to finish before editing. If handoff returns `resolve_attempt`, resolve the blocked attempt per `docs/image-api.md` before reopening or locking.
 
 ## 3. Apply the Requested Edit
 
@@ -61,6 +61,6 @@ If the episode is blocked by `resolve_attempt`, resolve the blocked attempt per 
 
 ## 4. Redraw Missing Pages and Finalize
 
-1. Run `node scripts/episode-tools.mjs handoff episodes/Tn` and process each pending page until `handoff` returns `finalize`.
+1. Run `node scripts/episode-tools.mjs handoff episodes/Tn` and process each pending page per `docs/workflow.md` until `handoff` returns `finalize`.
 2. Run `node scripts/episode-tools.mjs finalize episodes/Tn` and report the updated deliverable to the user.
 3. Never run `publish` unless the user explicitly confirms the episode has been published.

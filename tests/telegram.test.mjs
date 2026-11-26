@@ -7,8 +7,8 @@ import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
-import { createEpisode, changeEpisode } from '../scripts/episode-tools.mjs';
-import { draw } from '../scripts/draw-image.mjs';
+import { createEpisode, changeEpisode, episodeHandoff } from '../scripts/episode-tools.mjs';
+import { draw, recoverAttempt } from '../scripts/draw-image.mjs';
 import { exportSlide } from '../scripts/export-slide.mjs';
 import { episodeBundle, readEpisode, writeEpisode } from '../scripts/lib/episode.mjs';
 import { withEpisodeLock } from '../scripts/lib/lock.mjs';
@@ -419,6 +419,52 @@ test('reports only the safe image error code and does not repeat an ambiguous Te
   t.after(next.delivery.close);
   await next.bot.scan();
   assert.deepEqual(next.messages, []);
+});
+
+test('a live lookahead does not alert the owner, but its API failure stops the episode', async t => {
+  const { root, dir } = await setup(t, 'Vẽ gối đầu', ['Một trang.', 'Hai.']);
+  const { bot, delivery, messages } = mock(root);
+  t.after(delivery.close);
+  const first = await draw({ episodeDir: dir, slide: 1, request: () => new Response(png()) });
+  const started = Promise.withResolvers();
+  const response = Promise.withResolvers();
+  const draining = Promise.withResolvers();
+  const finishBody = Promise.withResolvers();
+  const body = new ReadableStream({
+    async pull(controller) {
+      draining.resolve();
+      await finishBody.promise;
+      controller.enqueue(new TextEncoder().encode('private API response'));
+      controller.close();
+    },
+  }, { highWaterMark: 0 });
+  const pending = assert.rejects(draw({ episodeDir: dir, slide: 2, lookahead: true, request: () => {
+    started.resolve();
+    return response.promise;
+  } }), /Do not retry/);
+  try {
+    await Promise.race([started.promise, pending]);
+    await bot.scan();
+    assert.deepEqual(messages, []);
+    await exportSlide(dir, relative(dir, first), 'Checked while lookahead runs');
+    response.resolve(new Response(body, { status: 429 }));
+    await Promise.race([draining.promise, pending]);
+    const handoff = await episodeHandoff(dir);
+    assert.equal(handoff.next, 'wait_for_image');
+    assert.equal(handoff.blocked.code, 'IMG_HTTP_429');
+    await assert.rejects(exportSlide(dir, relative(dir, first), 'No review writes after failure'), /unblocked episode/);
+    await assert.rejects(recoverAttempt(dir, handoff.in_progress.path, { note: 'Cannot reconcile a draining request' }), /Wait for the lookahead/);
+    await bot.scan();
+    assert.deepEqual(messages, ['T1: "Vẽ gối đầu" đang dừng ở ảnh 2 — IMG_HTTP_429.']);
+  } finally {
+    response.resolve(new Response('', { status: 429 }));
+    finishBody.resolve();
+    await pending;
+  }
+  assert.equal((await episodeHandoff(dir)).next, 'resolve_attempt');
+  await assert.rejects(draw({ episodeDir: dir, slide: 2, request: () => assert.fail('unexpected POST') }), /Episode blocked/);
+  await bot.scan();
+  assert.deepEqual(messages, ['T1: "Vẽ gối đầu" đang dừng ở ảnh 2 — IMG_HTTP_429.']);
 });
 
 test('published legacy without certified originals gets no notices or draft substitutes', async t => {

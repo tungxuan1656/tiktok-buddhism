@@ -125,6 +125,9 @@ export async function pageState(dir, slide, fp, attempts) {
   return { slide, action: rejected ? 'repair' : 'draw', rejected, attempt: `${pad3(slide)}-a${count + 1}` };
 }
 
+export const canLookahead = (current, following) => current?.action === 'review' &&
+  (following?.action === 'draw' || following?.action === 'repair');
+
 export async function episodePages(dir, validation, attempts) {
   const pages = [];
   for (const [i, fp] of validation.slideFingerprints.entries()) pages.push(await pageState(dir, i + 1, fp, attempts));

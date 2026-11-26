@@ -58,11 +58,12 @@ node scripts/episode-tools.mjs lock episodes/Tn
 
 ## 5. Draw and Visually Verify Each Slide
 
-1. Run `node scripts/episode-tools.mjs handoff episodes/Tn` to get the next slide/action.
-2. Generate the next slide:
+1. Run `node scripts/episode-tools.mjs handoff episodes/Tn` to get the next slide/action. Follow the lookahead loop in `docs/workflow.md`; reuse the current review JPEG when available.
+2. To draw or repair the first unfinished slide:
    ```bash
    node scripts/draw-image.mjs --slide episodes/Tn N
    ```
+   - When handoff returns `lookahead: M`, start `node scripts/draw-image.mjs --lookahead episodes/Tn M` in the background. Review the current JPEG while it runs. Wait for that one request before sending another; if the current slide is rejected, keep the prefetched JPEG and repair the current slide first. Fall back to sequential drawing if the terminal cannot track the background command.
    - Never call the image API directly, retry automatically, or switch model/provider. On API errors, stop the episode, preserve recovery files, and report per `docs/image-api.md`.
 3. Open the **compressed JPEG** (`episodes/Tn/drafts/.../image.jpg`), zooming in if needed, and verify every line, character, diacritic, and punctuation mark against `slides[N-1].text`. Also check soft rounded sans-serif lettering in dark brown `#4B2F1E`, clean off-white paper background, layout balance, and character consistency per `docs/visual-style.md`.
 4. Record the outcome once, immediately before moving to the next slide. Keep per-slide results in the check or reject record, not in `notes.md`:

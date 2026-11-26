@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { changeEpisode } from '../scripts/episode-tools.mjs';
 import { assertEpisodeIdentity, blockingEpisodeAttempt, bundleTag, deliverableStatus, episodeBundle, EpisodeStateError, imageBytes, isEpisodeCode, readEpisode } from '../scripts/lib/episode.mjs';
 import { withEpisodeLock } from '../scripts/lib/lock.mjs';
-import { imageError, statIfPresent } from '../scripts/lib/resume.mjs';
+import { activeLookahead, imageError, lookaheadCanReview, statIfPresent } from '../scripts/lib/resume.mjs';
 import { TelegramError } from './api.mjs';
 
 const states = { draft: 'đang soạn hoặc chỉnh', locked: 'đang làm ảnh', ready_for_review: 'đã xong, chờ đăng', published: 'đã đăng' };
@@ -315,6 +315,7 @@ export class Bot {
           const ep = await this.episode(code);
           if (ep.status === 'published' && ep.legacy) return false;
           const error = await blockingEpisodeAttempt(dir);
+          if (lookaheadCanReview(error) && await activeLookahead(dir, error)) return null;
           if (error) {
             const uncertain = error.state === 'in_flight' || error.state === 'unknown';
             const errorCode = imageError(error);

@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { checkPath, checkedSlide, episodePages, imagePath, loadValidated } from './lib/episode.mjs';
 import { withEpisodeLock } from './lib/lock.mjs';
 import { confineRelativeFile, confineTargetPath, stripDotSlash, writeAtomic } from './lib/paths.mjs';
-import { blockingAttempt, episodeAttempts, readRejection, statIfPresent } from './lib/resume.mjs';
+import { activeLookahead, blockingAttempt, episodeAttempts, lookaheadCanReview, readRejection, statIfPresent } from './lib/resume.mjs';
 import { readImageInfo } from './lib/schema.mjs';
 
 export async function exportSlide(dir, file, note) {
@@ -15,8 +15,12 @@ export async function exportSlide(dir, file, note) {
     const attempts = await episodeAttempts(dir);
     const attempt = attempts.find(a => `${a.path}/image.jpg` === file);
     const slide = attempt?.plan.slide;
+    const blocked = blockingAttempt(attempts);
     if (!attempt || attempt.plan.character || attempt.state !== 'succeeded' || !Number.isInteger(slide) ||
-        slide < 1 || slide > episode.slides.length || blockingAttempt(attempts)) throw new Error('Expected a successful slide draft in an unblocked episode');
+        slide < 1 || slide > episode.slides.length || (blocked &&
+          (slide >= blocked.plan.slide || !lookaheadCanReview(blocked) || !await activeLookahead(dir, blocked)))) {
+      throw new Error('Expected a successful slide draft in an unblocked episode');
+    }
     const fp = validation.slideFingerprints[slide - 1];
     const input = await confineRelativeFile(dir, file);
     const info = await readImageInfo(input.real, { requireNormalized1080: true, includeBytes: true });

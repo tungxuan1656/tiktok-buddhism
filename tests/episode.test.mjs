@@ -97,6 +97,71 @@ test('sequential draws reuse bytes, require an immediate visual check, and reope
   assert.equal(calls, 3);
 });
 
+test('lookahead overlaps review only one slide ahead, and keeps its draft through a repair', async t => {
+  const dir = await locked(t, [page('First.'), page('Second.'), page('Third.')]);
+  const job = { episodeDir: dir };
+  const image = png('white');
+  const drawSlide = async (slide, raw = image) => relative(dir, await draw({ ...job, slide, request: () => new Response(raw) }));
+  const noPost = () => assert.fail('unexpected POST');
+  await assert.rejects(draw({ ...job, slide: 2, lookahead: true, request: noPost }), /current review draft/);
+  const first = await drawSlide(1);
+  assert.equal((await episodeHandoff(dir)).lookahead, 2);
+  await assert.rejects(draw({ ...job, slide: 3, lookahead: true, request: noPost }), /next unfinished slide/);
+
+  const started = Promise.withResolvers();
+  const response = Promise.withResolvers();
+  const pending = draw({ ...job, slide: 2, lookahead: true, request: () => {
+    started.resolve();
+    return response.promise;
+  } });
+  try {
+    await Promise.race([started.promise, pending]);
+    let handoff = await episodeHandoff(dir);
+    assert.equal(handoff.next, 'review');
+    assert.equal(handoff.page.file, first);
+    assert.equal(handoff.in_progress.slide, 2);
+    assert.equal(handoff.lookahead, undefined);
+    await assert.rejects(draw({ ...job, slide: 3, lookahead: true, request: noPost }), /Episode blocked/);
+    await assert.rejects(changeEpisode(dir, 'reopen'), /Episode blocked/);
+    await assert.rejects(recoverAttempt(dir, handoff.in_progress.path, { note: 'Cannot reconcile a live request' }), /Wait for the lookahead/);
+    await rejectImage(dir, first, 'Independently checked; wrong diacritic');
+    handoff = await episodeHandoff(dir);
+    assert.equal(handoff.next, 'wait_for_image');
+    await assert.rejects(draw({ ...job, slide: 1, request: noPost }), /Episode blocked/);
+  } finally {
+    response.resolve(new Response(image));
+    await pending;
+  }
+
+  const second = relative(dir, await pending);
+  assert.equal((await episodeHandoff(dir)).next, 'repair');
+  await assert.rejects(exportSlide(dir, second, 'Out of order'), /current review draft/);
+  await assert.rejects(rejectImage(dir, second, 'Out of order'), /current review draft/);
+  const repaired = await drawSlide(1, png('blue'));
+  await exportSlide(dir, repaired, 'Checked repair');
+  assert.equal((await episodeHandoff(dir)).page.file, second);
+  assert.equal(await draw({ ...job, slide: 2, request: noPost }), join(dir, second));
+  await exportSlide(dir, second, 'Checked reused lookahead JPEG');
+});
+
+test('an interrupted lookahead becomes an unresolved attempt after its lock is gone', async t => {
+  const dir = await locked(t);
+  const image = png('white');
+  const request = () => new Response(image);
+  const first = relative(dir, await draw({ episodeDir: dir, slide: 1, request }));
+  const second = await draw({ episodeDir: dir, slide: 2, lookahead: true, request });
+  await rm(second);
+  await rm(join(second, '..', 'response.bin'));
+  await writeFile(join(second, '..', 'status.json'), JSON.stringify({ state: 'in_flight' }));
+  const handoff = await episodeHandoff(dir);
+  assert.equal(handoff.next, 'resolve_attempt');
+  assert.equal(handoff.blocked.slide, 2);
+  assert.equal(handoff.in_progress, undefined);
+  await assert.rejects(exportSlide(dir, first, 'Checked'), /unblocked episode/);
+  await recoverAttempt(dir, handoff.blocked.path, { note: 'Confirmed request did not complete' });
+  assert.equal((await episodeHandoff(dir)).next, 'review');
+});
+
 for (const [label, response, code] of [
   ['HTTP 429', () => new Response('private diagnostic', { status: 429 }), 'IMG_HTTP_429'],
   ['timeout', () => { throw new DOMException('private diagnostic', 'TimeoutError'); }, 'IMG_TIMEOUT'],

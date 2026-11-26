@@ -1,11 +1,11 @@
 import { mkdir, mkdtemp, readdir, rename, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { assertEpisodeIdentity, blockingEpisodeAttempt, bundleTag, deliverableStatus, episodeBundle, episodePages, EpisodeStateError, imageBytes, isEpisodeCode, loadValidated, planHash, readEpisode, writeEpisode } from './lib/episode.mjs';
+import { assertEpisodeIdentity, blockingEpisodeAttempt, bundleTag, canLookahead, deliverableStatus, episodeBundle, episodePages, EpisodeStateError, imageBytes, isEpisodeCode, loadValidated, planHash, readEpisode, writeEpisode } from './lib/episode.mjs';
 import { withEpisodeLock } from './lib/lock.mjs';
 import { confineTargetPath, stripDotSlash, writeAtomic } from './lib/paths.mjs';
 import { REPO_ROOT } from './lib/policy.mjs';
-import { attemptIssue, episodeAttempts, imageError, readRejection, rejectionPath, statIfPresent, verifiedDraft } from './lib/resume.mjs';
+import { activeLookahead, attemptIssue, blockingAttempt, episodeAttempts, imageError, lookaheadCanReview, readRejection, rejectionPath, statIfPresent, verifiedDraft } from './lib/resume.mjs';
 import { slidePrompt } from './lib/prompt.mjs';
 
 export async function createEpisode(root, title, request) {
@@ -92,13 +92,14 @@ export async function episodeHandoff(dir) {
     const episode = await readEpisode(dir);
     assertEpisodeIdentity(dir, episode);
     const base = { code: episode.code, title: episode.title, status: episode.status };
-    const blocked = await blockingEpisodeAttempt(dir);
-    if (blocked) return { ...base, next: 'resolve_attempt', blocked: await attemptIssue(dir, blocked) };
+    const attempts = await episodeAttempts(dir);
+    const blocked = blockingAttempt(attempts);
+    const running = await activeLookahead(dir, blocked);
+    if (blocked && !running) return { ...base, next: 'resolve_attempt', blocked: await attemptIssue(dir, blocked) };
     if (deliverableStatus(episode.status)) {
       try { return { ...base, next: 'done', files: (await episodeBundle(dir)).files.map(f => f.file) }; }
       catch (error) { return { ...base, next: 'inspect_artifact', issue: error.message }; }
     }
-    const attempts = await episodeAttempts(dir);
     if (episode.status === 'draft') {
       const planned = new Set((Array.isArray(episode.slides) ? episode.slides : []).flatMap(slide =>
         Array.isArray(slide?.characters) ? slide.characters.map(c => `${c?.id}/${c?.version}`) : []));
@@ -115,9 +116,13 @@ export async function episodeHandoff(dir) {
     }
     const { validation } = await loadValidated(dir);
     const pages = await episodePages(dir, validation, attempts);
-    const next = pages.find(p => p.action !== 'keep');
+    const [page, following] = pages.filter(p => p.action !== 'keep');
+    const failure = running && !lookaheadCanReview(blocked);
+    const in_progress = running ? { slide: blocked.plan.slide, path: blocked.path } : undefined;
+    const lookahead = !running && canLookahead(page, following) ? following.slide : undefined;
     return { ...base, kept: pages.filter(p => p.action === 'keep').map(p => p.slide), total: pages.length,
-      next: next?.action ?? 'finalize', page: next, blocked: next?.blocked };
+      next: running && (failure || page?.action !== 'review') ? 'wait_for_image' : page?.action ?? 'finalize',
+      page, blocked: failure ? await attemptIssue(dir, blocked) : page?.blocked, in_progress, lookahead };
   }, { timeoutMs: 0 });
 }
 
@@ -125,13 +130,22 @@ export async function rejectImage(dir, input, note) {
   if (typeof note !== 'string' || !note.trim() || Buffer.byteLength(note) > 4000) throw new Error('Describe the visual fault (up to 4000 bytes)');
   const file = stripDotSlash(input);
   return withEpisodeLock(dir, async () => {
-    await ensureUnblocked(dir);
+    const attempts = await episodeAttempts(dir);
+    const blocked = blockingAttempt(attempts);
+    if (blocked && (!lookaheadCanReview(blocked) || !await activeLookahead(dir, blocked))) {
+      throw new EpisodeStateError(`Episode blocked by ${blocked.path} (${imageError(blocked)}); run handoff`);
+    }
     const episode = await readEpisode(dir);
     assertEpisodeIdentity(dir, episode);
     if (deliverableStatus(episode.status)) throw new Error('Reopen this episode before rejecting a checked image');
     const image = await imageBytes(dir, file);
-    const attempts = await episodeAttempts(dir);
     const attempt = attempts.find(a => `${a.path}/image.jpg` === file && a.state === 'succeeded' && a.output?.sha256 === image.sha256);
+    if ((blocked || attempt?.plan.lookahead) && episode.status === 'locked') {
+      const { validation } = await loadValidated(dir);
+      const pages = await episodePages(dir, validation, attempts);
+      const current = pages.find(p => p.action !== 'keep');
+      if (current?.action !== 'review' || current.file !== file) throw new Error('Only the current review draft may be rejected');
+    }
     let fp = attempt?.slide_content_sha256;
     if (file.startsWith('artifact/images/')) {
       const { validation: current } = await loadValidated(dir, { requireLock: false });

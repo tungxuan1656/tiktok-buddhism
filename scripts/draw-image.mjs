@@ -4,9 +4,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { computeRequestFingerprint, sha256Bytes, sha256Canonical } from './lib/fingerprint.mjs';
-import { EPISODE_JSON, episodePages, loadValidated } from './lib/episode.mjs';
-import { withEpisodeLock } from './lib/lock.mjs';
-import { blockingAttempt, episodeAttempts, readRejection, statIfPresent, verifiedDraft, verifiedRawResponse, visualAttempts } from './lib/resume.mjs';
+import { canLookahead, EPISODE_JSON, episodePages, loadValidated } from './lib/episode.mjs';
+import { acquireEpisodeLock, LOOKAHEAD_LOCK, withEpisodeLock } from './lib/lock.mjs';
+import { activeLookahead, blockingAttempt, episodeAttempts, readRejection, statIfPresent, verifiedDraft, verifiedRawResponse, visualAttempts } from './lib/resume.mjs';
 import { confineExistingPath, confineTargetPath, isSafeId, isSafeVersion, stripDotSlash, writeAtomic } from './lib/paths.mjs';
 import { slidePrompt } from './lib/prompt.mjs';
 import {
@@ -73,10 +73,12 @@ async function characterJob(dir, episode, target, promptFile, references, attemp
   return { prompt: await readFile(input.real, 'utf8'), references, fp, name: `character-${id}-${version}-a${previous.length + 1}` };
 }
 
-export async function draw({ episodeDir, slide, target, promptFile, references = [], request = fetch }) {
+export async function draw({ episodeDir, slide, target, promptFile, references = [], lookahead = false, request = fetch }) {
   const dir = resolve(episodeDir);
-  return withEpisodeLock(dir, async () => {
+  let release;
+  const result = await withEpisodeLock(dir, async () => {
     const character = target !== undefined;
+    if (character && lookahead) throw new Error('Lookahead is only for slides');
     const { episode, validation } = await loadValidated(dir, { character });
     const attempts = await episodeAttempts(dir);
     const blocked = blockingAttempt(attempts);
@@ -90,8 +92,12 @@ export async function draw({ episodeDir, slide, target, promptFile, references =
         throw new Error('Drawing requires a locked script and a valid slide number');
       }
       const pages = await episodePages(dir, validation, attempts);
+      const [current, following] = pages.filter(p => p.action !== 'keep');
+      if (lookahead && (!canLookahead(current, following) || following.slide !== slide)) {
+        throw new Error('Lookahead requires a current review draft and the next unfinished slide to draw; run handoff');
+      }
       if (pages[slide - 1].action === 'keep') return join(dir, pages[slide - 1].file);
-      const next = pages.find(p => p.action !== 'keep');
+      const next = lookahead ? following : current;
       if (!next || next.slide !== slide) throw new Error(`Only the first unfinished slide may be drawn (next: ${next?.slide ?? 'none'})`);
       if (next.action === 'review') return join(dir, next.file);
       if (next.action === 'attempt_limit') throw new Error(`Attempt limit reached for slide ${slide}`);
@@ -107,7 +113,7 @@ export async function draw({ episodeDir, slide, target, promptFile, references =
       if (required.some((hash, i) => hash !== refs[i + 1]?.sha256)) throw new Error('Pinned character references changed');
     }
     const promptSha256 = sha256Bytes(job.prompt);
-    const data = JSON.stringify({ plan: { file: EPISODE_JSON, code: episode.code, slide, character, target },
+    const data = JSON.stringify({ plan: { file: EPISODE_JSON, code: episode.code, slide, character, target, lookahead: lookahead ? true : undefined },
       slide_content_sha256: job.fp, prompt_sha256: promptSha256,
       request_sha256: computeRequestFingerprint({ slideContentSha256: job.fp, promptSha256, referenceHashes: refs.map(r => r.sha256) }),
       model: IMAGE_MODEL, size: IMAGE_SIZE, output_format: IMAGE_OUTPUT_FORMAT, prompt: job.prompt, references: refs }, null, 2);
@@ -116,6 +122,7 @@ export async function draw({ episodeDir, slide, target, promptFile, references =
     if (await statIfPresent(work)) throw new Error('Attempt directory already exists; inspect it before proceeding');
     await exec('magick', ['-version'], { timeout: 10_000 });
     await mkdir(dirname(work), { recursive: true, mode: 0o700 });
+    if (lookahead) release = await acquireEpisodeLock(dir, { name: LOOKAHEAD_LOCK });
     const staging = await mkdtemp(join(dir, '.register-'));
     try {
       await writeFile(join(staging, 'request.json'), `${data}\n`, { mode: 0o600 });
@@ -124,8 +131,15 @@ export async function draw({ episodeDir, slide, target, promptFile, references =
     } finally {
       await rm(staging, { recursive: true, force: true });
     }
-    return executeRequest({ confinedWork: work, prompt: job.prompt, images, request });
-  }, { timeoutMs: 0 });
+    const args = { confinedWork: work, prompt: job.prompt, images, request, lookaheadDir: lookahead ? dir : undefined };
+    return lookahead ? args : executeRequest(args);
+  }, { timeoutMs: lookahead ? 10_000 : 0 }).catch(error => {
+    release?.();
+    throw error;
+  });
+  if (!release) return result;
+  try { return await executeRequest(result); }
+  finally { release(); }
 }
 
 async function normalizeImage(raw, dir, expectedHash) {
@@ -144,8 +158,11 @@ async function normalizeImage(raw, dir, expectedHash) {
   } finally { await rm(staging, { recursive: true, force: true }); }
 }
 
-async function executeRequest({ confinedWork, prompt, images, request }) {
-  const save = record => saveStatus(confinedWork, record);
+async function executeRequest({ confinedWork, prompt, images, request, lookaheadDir }) {
+  // Keep the lease and buffered response until the checkpoint can be written.
+  const save = record => lookaheadDir
+    ? withEpisodeLock(lookaheadDir, () => saveStatus(confinedWork, record), { timeoutMs: Infinity })
+    : saveStatus(confinedWork, record);
   let state = 'unknown';
   let httpStatus;
   let responseSha256;
@@ -157,7 +174,10 @@ async function executeRequest({ confinedWork, prompt, images, request }) {
       method: 'POST', headers, body: JSON.stringify(payload), redirect: 'error', signal: AbortSignal.timeout(300_000),
     });
     httpStatus = response.status;
-    if (!response.ok) state = httpStatus >= 500 || httpStatus === 408 ? 'unknown' : 'failed';
+    if (!response.ok) {
+      state = httpStatus >= 500 || httpStatus === 408 ? 'unknown' : 'failed';
+      if (lookaheadDir) await save({ state, http_status: httpStatus });
+    }
     if (Number(response.headers.get('content-length')) > MAX_IMAGE_BYTES) throw new Error('Response too large');
     const chunks = [];
     let length = 0;
@@ -194,6 +214,7 @@ export async function recoverAttempt(episodeDir, name, { note } = {}) {
     const selected = stripDotSlash(name);
     const attempt = attempts.find(a => a.name === selected || a.path === selected);
     const blocked = blockingAttempt(attempts);
+    if (await activeLookahead(dir, blocked)) throw new Error('Wait for the lookahead request to finish; run handoff');
     const damaged = attempt?.state === 'succeeded' && !await verifiedDraft(dir, attempt);
     if (!attempt || (blocked ? attempt !== blocked : !damaged)) throw new Error('Select the blocking or damaged attempt from handoff');
     const work = join(dir, attempt.path);
@@ -221,11 +242,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const [command, dir, arg, extra, ...rest] = process.argv.slice(2);
   try {
     let result;
-    if (command === '--slide' && dir && arg && extra === undefined) result = await draw({ episodeDir: dir, slide: Number(arg) });
-    else if (command === '--character' && dir && arg && extra) result = await draw({ episodeDir: dir, target: arg, promptFile: extra, references: rest });
+    if (['--slide', '--lookahead'].includes(command) && dir && arg && extra === undefined) {
+      result = await draw({ episodeDir: dir, slide: Number(arg), lookahead: command === '--lookahead' });
+    } else if (command === '--character' && dir && arg && extra) result = await draw({ episodeDir: dir, target: arg, promptFile: extra, references: rest });
     else if (command === '--normalize' && dir && arg && extra === undefined) result = await recoverAttempt(dir, arg);
     else if (command === '--reconcile' && dir && arg && extra === '--note' && rest.length === 1) result = await recoverAttempt(dir, arg, { note: rest[0] });
-    else throw new Error('Usage: draw-image.mjs --slide DIR N | --character DIR ID/VERSION PROMPT [REF ...] | --normalize DIR ATTEMPT | --reconcile DIR ATTEMPT --note "verified outcome"');
+    else throw new Error('Usage: draw-image.mjs --slide|--lookahead DIR N | --character DIR ID/VERSION PROMPT [REF ...] | --normalize DIR ATTEMPT | --reconcile DIR ATTEMPT --note "verified outcome"');
     console.log(typeof result === 'string' ? result : JSON.stringify(result));
   } catch (error) {
     console.error(error.message);

@@ -2,6 +2,7 @@ import { lstat, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { sha256Bytes } from './fingerprint.mjs';
 import { MAX_EPISODE_JSON_BYTES, MAX_IMAGE_BYTES, RECONCILED_STATES, UNRESOLVED_STATES } from './policy.mjs';
+import { acquireEpisodeLock, LOOKAHEAD_LOCK } from './lock.mjs';
 import { confineRelativeFile } from './paths.mjs';
 import { ImageDecoderError, isSha256, readImageInfo } from './schema.mjs';
 
@@ -86,6 +87,17 @@ export async function episodeAttempts(dir) {
 
 export function blockingAttempt(attempts) {
   return attempts.find(a => a.state === 'failed' || UNRESOLVED_STATES.has(a.state));
+}
+
+export const lookaheadCanReview = attempt => ['in_flight', 'received'].includes(attempt?.state);
+
+// Check under the episode lock, so a new registration cannot mask an interrupted request.
+export async function activeLookahead(dir, attempt) {
+  if (attempt?.plan.lookahead !== true || attempt.plan.character) return false;
+  const release = await acquireEpisodeLock(dir, { name: LOOKAHEAD_LOCK, timeoutMs: 0, allowBusy: true });
+  if (!release) return true;
+  release();
+  return false;
 }
 
 // Reconciled transport failures did not use up an image review attempt.

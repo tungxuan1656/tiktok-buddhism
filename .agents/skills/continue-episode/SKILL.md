@@ -45,8 +45,9 @@ Do not redraw slides already marked `action: "keep"`.
     node scripts/draw-image.mjs --reconcile episodes/Tn ATTEMPT --note "verified reconciliation outcome"
     ```
 - **`prepare_script`**: complete `episodes/Tn/artifact/episode.json` and `references/` (reusing valid `character_drafts` if present), then run `validate` and `lock`.
-- **`draw`**: run `node scripts/draw-image.mjs --slide episodes/Tn N`, then visually verify the compressed JPEG and run `--checked` or `reject`.
-- **`review`**: open `page.file`, verify text, diacritics, layout, and character consistency, then run `export-slide.mjs --checked` or `episode-tools.mjs reject`.
+- **`draw` / `repair`**: run `node scripts/draw-image.mjs --slide episodes/Tn N`, then visually verify the compressed JPEG and run `--checked` or `reject`.
+- **`review`**: if handoff offers `lookahead: M`, start that one background draw per `docs/workflow.md`. Open `page.file`, verify text, diacritics, layout, and character consistency, then run `export-slide.mjs --checked` or `episode-tools.mjs reject`.
+- **`wait_for_image`**: wait for the request listed in `in_progress` to finish, then rerun handoff; do not launch another request or reconcile the active one while waiting. If handoff also exposes `blocked`, report the API failure and stop review until recovery.
 - **`attempt_limit`**: stop and report to the user that the 3-draft visual limit has been reached for that slide; do not bypass the limit or alter `episode.json` to match faulty output.
 - **`finalize`**: run `node scripts/episode-tools.mjs finalize episodes/Tn` and hand off the directory path and slide count.
 - **`done` / `inspect_artifact`**: report the current status or artifact issue.
