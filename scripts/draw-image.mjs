@@ -5,8 +5,8 @@ import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { computeRequestFingerprint, sha256Bytes, sha256Canonical } from './lib/fingerprint.mjs';
 import { canLookahead, EPISODE_JSON, episodePages, loadValidated } from './lib/episode.mjs';
-import { acquireEpisodeLock, LOOKAHEAD_LOCK, withEpisodeLock } from './lib/lock.mjs';
-import { activeLookahead, blockingAttempt, episodeAttempts, readRejection, statIfPresent, verifiedDraft, verifiedRawResponse, visualAttempts } from './lib/resume.mjs';
+import { withEpisodeLock } from './lib/lock.mjs';
+import { attemptState, claimLookahead, LOOKAHEAD_GUARD, readRejection, statIfPresent, verifiedDraft, verifiedRawResponse, visualAttempts } from './lib/resume.mjs';
 import { confineExistingPath, confineTargetPath, isSafeId, isSafeVersion, stripDotSlash, writeAtomic } from './lib/paths.mjs';
 import { slidePrompt } from './lib/prompt.mjs';
 import {
@@ -17,7 +17,7 @@ import {
 import { readEpisodeJson, readImageInfo } from './lib/schema.mjs';
 
 const exec = promisify(execFile);
-const saveStatus = (dir, record) => writeAtomic(join(dir, 'status.json'), `${JSON.stringify(record, null, 2)}\n`, 0o600);
+const saveStatus = (dir, record) => writeAtomic(join(dir, 'status.json'), `${JSON.stringify(record, null, 2)}\n`, 0o600, { createParent: false });
 
 async function readAndCheckReferences(references, episodeDir, { includeBytes = true, maxTotalBytes = MAX_TOTAL_REF_BYTES } = {}) {
   if (!Array.isArray(references) || references.length > MAX_REFS) {
@@ -75,13 +75,14 @@ async function characterJob(dir, episode, target, promptFile, references, attemp
 
 export async function draw({ episodeDir, slide, target, promptFile, references = [], lookahead = false, request = fetch }) {
   const dir = resolve(episodeDir);
+  if (lookahead) await exec('magick', ['-version'], { timeout: 10_000 });
   let release;
+  const closeLookahead = () => { release?.(); release = undefined; };
   const result = await withEpisodeLock(dir, async () => {
     const character = target !== undefined;
     if (character && lookahead) throw new Error('Lookahead is only for slides');
     const { episode, validation } = await loadValidated(dir, { character });
-    const attempts = await episodeAttempts(dir);
-    const blocked = blockingAttempt(attempts);
+    const { attempts, blocked } = await attemptState(dir);
     if (blocked) throw new Error(`Episode blocked by ${blocked.path} (${blocked.state}); run handoff`);
     let job;
     if (character) {
@@ -113,33 +114,37 @@ export async function draw({ episodeDir, slide, target, promptFile, references =
       if (required.some((hash, i) => hash !== refs[i + 1]?.sha256)) throw new Error('Pinned character references changed');
     }
     const promptSha256 = sha256Bytes(job.prompt);
+    const requestSha256 = computeRequestFingerprint({ slideContentSha256: job.fp, promptSha256, referenceHashes: refs.map(r => r.sha256) });
     const data = JSON.stringify({ plan: { file: EPISODE_JSON, code: episode.code, slide, character, target, lookahead: lookahead ? true : undefined },
       slide_content_sha256: job.fp, prompt_sha256: promptSha256,
-      request_sha256: computeRequestFingerprint({ slideContentSha256: job.fp, promptSha256, referenceHashes: refs.map(r => r.sha256) }),
+      request_sha256: requestSha256,
       model: IMAGE_MODEL, size: IMAGE_SIZE, output_format: IMAGE_OUTPUT_FORMAT, prompt: job.prompt, references: refs }, null, 2);
     if (Buffer.byteLength(data) + 1 > MAX_EPISODE_JSON_BYTES) throw new Error('Request record too large');
     const work = await confineTargetPath(dir, `drafts/${job.name}`);
     if (await statIfPresent(work)) throw new Error('Attempt directory already exists; inspect it before proceeding');
-    await exec('magick', ['-version'], { timeout: 10_000 });
     await mkdir(dirname(work), { recursive: true, mode: 0o700 });
-    if (lookahead) release = await acquireEpisodeLock(dir, { name: LOOKAHEAD_LOCK });
+    if (!lookahead) await exec('magick', ['-version'], { timeout: 10_000 });
     const staging = await mkdtemp(join(dir, '.register-'));
     try {
       await writeFile(join(staging, 'request.json'), `${data}\n`, { mode: 0o600 });
-      await saveStatus(staging, { state: 'in_flight' });
-      await rename(staging, work);
+      await saveStatus(staging, { state: lookahead ? 'prepared' : 'in_flight' });
+      if (lookahead) {
+        release = await claimLookahead(dir, `drafts/${job.name}`, requestSha256, () => rename(staging, work));
+        // A prepared draft is proof that POST has not started, even if the guard exists.
+        await saveStatus(work, { state: 'in_flight' });
+      } else await rename(staging, work);
     } finally {
       await rm(staging, { recursive: true, force: true });
     }
-    const args = { confinedWork: work, prompt: job.prompt, images, request, lookaheadDir: lookahead ? dir : undefined };
+    const args = { confinedWork: work, prompt: job.prompt, images, request, lookaheadDir: lookahead ? dir : undefined, closeLookahead };
     return lookahead ? args : executeRequest(args);
   }, { timeoutMs: lookahead ? 10_000 : 0 }).catch(error => {
-    release?.();
+    closeLookahead();
     throw error;
   });
   if (!release) return result;
   try { return await executeRequest(result); }
-  finally { release(); }
+  finally { closeLookahead(); }
 }
 
 async function normalizeImage(raw, dir, expectedHash) {
@@ -158,14 +163,21 @@ async function normalizeImage(raw, dir, expectedHash) {
   } finally { await rm(staging, { recursive: true, force: true }); }
 }
 
-async function executeRequest({ confinedWork, prompt, images, request, lookaheadDir }) {
-  // Keep the lease and buffered response until the checkpoint can be written.
+async function executeRequest({ confinedWork, prompt, images, request, lookaheadDir, closeLookahead }) {
   const save = record => lookaheadDir
-    ? withEpisodeLock(lookaheadDir, () => saveStatus(confinedWork, record), { timeoutMs: Infinity })
+    ? withEpisodeLock(lookaheadDir, async () => {
+      await attemptState(lookaheadDir);
+      await saveStatus(confinedWork, record);
+      if (record.state === 'succeeded') {
+        closeLookahead();
+        await rm(join(lookaheadDir, LOOKAHEAD_GUARD), { force: true });
+      }
+    }, { timeoutMs: Infinity })
     : saveStatus(confinedWork, record);
   let state = 'unknown';
   let httpStatus;
   let responseSha256;
+  let image;
   try {
     const payload = { model: IMAGE_MODEL, prompt, size: IMAGE_SIZE, output_format: IMAGE_OUTPUT_FORMAT, images };
     const headers = { 'content-type': 'application/json' };
@@ -191,30 +203,29 @@ async function executeRequest({ confinedWork, prompt, images, request, lookahead
     responseSha256 = sha256Bytes(bytes);
     if (response.ok) {
       state = 'received';
-      // Record the expected hash first so a complete raw file survives a crash after writing.
-      await save({ state, http_status: httpStatus, response_sha256: responseSha256 });
+      // Checkpoint the hash and bytes under the request lease without waiting for review.
+      await saveStatus(confinedWork, { state, http_status: httpStatus, response_sha256: responseSha256 });
     }
     await writeFile(raw, bytes, { flag: 'wx', mode: 0o600 });
     if (!response.ok) throw new Error('Image API did not succeed');
-    const image = await normalizeImage(raw, confinedWork, responseSha256);
-    await save({ state: 'succeeded', http_status: httpStatus, response_sha256: responseSha256, ...image });
-    return join(confinedWork, image.output.file);
+    image = await normalizeImage(raw, confinedWork, responseSha256);
   } catch (error) {
     const code = state === 'received' ? 'normalize_failed' : state;
     await save({ state: code, http_status: httpStatus, response_sha256: responseSha256,
       error_code: error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'IMG_TIMEOUT' : undefined });
     throw new Error(`Image job ${code}; inspect status.json and saved response. Do not retry the API blindly.`);
   }
+  await save({ state: 'succeeded', http_status: httpStatus, response_sha256: responseSha256, ...image });
+  return join(confinedWork, image.output.file);
 }
 
 export async function recoverAttempt(episodeDir, name, { note } = {}) {
   const dir = resolve(episodeDir);
   return withEpisodeLock(dir, async () => {
-    const attempts = await episodeAttempts(dir);
+    const { attempts, blocked, running, guarded } = await attemptState(dir);
     const selected = stripDotSlash(name);
     const attempt = attempts.find(a => a.name === selected || a.path === selected);
-    const blocked = blockingAttempt(attempts);
-    if (await activeLookahead(dir, blocked)) throw new Error('Wait for the lookahead request to finish; run handoff');
+    if (running) throw new Error('Wait for the lookahead request to finish; run handoff');
     const damaged = attempt?.state === 'succeeded' && !await verifiedDraft(dir, attempt);
     if (!attempt || (blocked ? attempt !== blocked : !damaged)) throw new Error('Select the blocking or damaged attempt from handoff');
     const work = join(dir, attempt.path);
@@ -223,18 +234,24 @@ export async function recoverAttempt(episodeDir, name, { note } = {}) {
     if (note !== undefined) {
       if (typeof note !== 'string' || !note.trim() || Buffer.byteLength(note) > 4000) throw new Error('Reconciliation requires an explanation (up to 4000 bytes)');
       if (raw) throw new Error('Verified response image is recoverable; use --normalize instead of --reconcile');
+      const guard = guarded === attempt ? join(dir, LOOKAHEAD_GUARD) : null;
+      // Leave a prepared draft as proof until the guard is gone.
+      if (guard && attempt.state === 'prepared') await rm(guard, { force: true });
       await saveStatus(work, { ...status, previous_state: status.state, state: 'reconciled_failed', reconcile_note: note.trim() });
+      if (guard && attempt.state !== 'prepared') await rm(guard, { force: true });
       return { reconciled: attempt.path };
     }
     if (!raw) throw new Error('No verified response image to recover; reconcile with the server before resending');
+    let result;
     try {
-      const result = await normalizeImage(raw, work, attempt.response_sha256);
-      await saveStatus(work, { ...status, ...result, state: 'succeeded' });
-      return join(work, result.output.file);
+      result = await normalizeImage(raw, work, attempt.response_sha256);
     } catch {
       if (!damaged) await saveStatus(work, { ...status, state: 'normalize_failed' });
       throw new Error('Local image normalization failed; no API call made');
     }
+    await saveStatus(work, { ...status, ...result, state: 'succeeded' });
+    if (guarded === attempt) await rm(join(dir, LOOKAHEAD_GUARD), { force: true });
+    return join(work, result.output.file);
   }, { timeoutMs: 0 });
 }
 

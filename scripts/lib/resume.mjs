@@ -1,9 +1,9 @@
-import { lstat, readdir, readFile } from 'node:fs/promises';
+import { lstat, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { sha256Bytes } from './fingerprint.mjs';
 import { MAX_EPISODE_JSON_BYTES, MAX_IMAGE_BYTES, RECONCILED_STATES, UNRESOLVED_STATES } from './policy.mjs';
 import { acquireEpisodeLock, LOOKAHEAD_LOCK } from './lock.mjs';
-import { confineRelativeFile } from './paths.mjs';
+import { confineRelativeFile, confineTargetPath, writeAtomic } from './paths.mjs';
 import { ImageDecoderError, isSha256, readImageInfo } from './schema.mjs';
 
 export const statIfPresent = path => lstat(path).catch(error => {
@@ -59,7 +59,7 @@ export async function readAttemptRecord(draftDirPath, entryName) {
 
   const plan = req?.plan ?? rec?.plan;
   const validState = ['invalid_input', 'succeeded', 'failed'].includes(rec?.state) || UNRESOLVED_STATES.has(rec?.state) || RECONCILED_STATES.has(rec?.state);
-  if (!validState || (rec.state !== 'invalid_input' && rec.mode !== 'normalize' &&
+  if (!validState || (rec.state === 'prepared' && plan?.lookahead !== true) || (rec.state !== 'invalid_input' && rec.mode !== 'normalize' &&
       (typeof plan?.file !== 'string' || typeof plan.character !== 'boolean' || (!plan.character && !Number.isSafeInteger(plan.slide))))) {
     throw new Error(`Corrupted attempt metadata in drafts/${entryName}`);
   }
@@ -85,19 +85,76 @@ export async function episodeAttempts(dir) {
   return attempts;
 }
 
-export function blockingAttempt(attempts) {
-  return attempts.find(a => a.state === 'failed' || UNRESOLVED_STATES.has(a.state));
+export const lookaheadCanReview = attempt => ['in_flight', 'received'].includes(attempt?.state);
+export const LOOKAHEAD_GUARD = '.lookahead-active.json';
+
+export class LookaheadStateError extends Error {
+  constructor() {
+    super('Lookahead lock and attempt records do not match; preserve the files and inspect the running request before recovery');
+  }
 }
 
-export const lookaheadCanReview = attempt => ['in_flight', 'received'].includes(attempt?.state);
+async function lookaheadLockId(dir) {
+  const file = join(dir, LOOKAHEAD_LOCK);
+  const stat = await lstat(file, { bigint: true }).catch(error => {
+    if (error.code !== 'ENOENT') throw error;
+    return null;
+  });
+  if (stat && !stat.isFile()) throw new LookaheadStateError();
+  return stat ? `${stat.dev}:${stat.ino}` : null;
+}
 
-// Check under the episode lock, so a new registration cannot mask an interrupted request.
-export async function activeLookahead(dir, attempt) {
-  if (attempt?.plan.lookahead !== true || attempt.plan.character) return false;
-  const release = await acquireEpisodeLock(dir, { name: LOOKAHEAD_LOCK, timeoutMs: 0, allowBusy: true });
-  if (!release) return true;
-  release();
-  return false;
+export async function claimLookahead(dir, path, requestSha256, publishDraft) {
+  const file = await confineTargetPath(dir, LOOKAHEAD_LOCK);
+  if (!await lookaheadLockId(dir)) await writeFile(file, '', { flag: 'wx', mode: 0o600 });
+  const lock = await lookaheadLockId(dir);
+  const release = await acquireEpisodeLock(dir, { name: LOOKAHEAD_LOCK, timeoutMs: 0 });
+  try {
+    await publishDraft();
+    if (!lock || await lookaheadLockId(dir) !== lock) throw new LookaheadStateError();
+    await writeAtomic(await confineTargetPath(dir, LOOKAHEAD_GUARD), JSON.stringify({ path, requestSha256, lock }), 0o600);
+    return release;
+  } catch (error) {
+    release();
+    throw error;
+  }
+}
+
+async function readLookaheadGuard(dir) {
+  const guardPath = join(dir, LOOKAHEAD_GUARD);
+  const stat = await statIfPresent(guardPath);
+  let guard;
+  if (stat) {
+    if (!stat.isFile() || stat.size > 4096) throw new LookaheadStateError();
+    try { guard = JSON.parse(await readFile(guardPath, 'utf8')); }
+    catch { throw new LookaheadStateError(); }
+    if (!guard?.lock || !isSha256(guard.requestSha256)) throw new LookaheadStateError();
+  }
+  return guard;
+}
+
+// Inspect under the episode lock. The guard survives deletion of either the draft or the lock file.
+export async function attemptState(dir) {
+  const guard = await readLookaheadGuard(dir);
+  const attempts = await episodeAttempts(dir).catch(error => {
+    throw guard ? new LookaheadStateError() : error;
+  });
+  const blocked = attempts.find(a => a.state === 'failed' || UNRESOLVED_STATES.has(a.state));
+  const lock = await lookaheadLockId(dir);
+  const claimed = guard && attempts.find(a => a.path === guard.path && a.request_sha256 === guard.requestSha256 && a.plan.lookahead === true);
+  if ((guard && (!claimed || guard.lock !== lock)) ||
+      (!lock && blocked?.plan.lookahead === true && blocked.state !== 'prepared')) throw new LookaheadStateError();
+  if (!lock) return { attempts, blocked, running: false };
+  let release;
+  try { release = await acquireEpisodeLock(dir, { name: LOOKAHEAD_LOCK, timeoutMs: 0, probe: true }); }
+  catch { throw new LookaheadStateError(); }
+  finally {
+    release?.();
+    if (await lookaheadLockId(dir) !== lock) throw new LookaheadStateError();
+  }
+  const running = !release;
+  if (running && (!claimed || claimed !== blocked)) throw new LookaheadStateError();
+  return { attempts, blocked, running, guarded: claimed };
 }
 
 // Reconciled transport failures did not use up an image review attempt.
@@ -141,6 +198,7 @@ export async function attemptIssue(dir, attempt) {
 export function imageError(attempt) {
   if (!attempt) return null;
   const { state, http_status: status } = attempt;
+  if (state === 'prepared') return 'IMG_NOT_SENT';
   if (state === 'normalize_failed' || state === 'received') return 'IMG_NORMALIZE';
   if (Number.isInteger(status) && status >= 300 && status <= 599) return `IMG_HTTP_${status}`;
   return attempt.error_code === 'IMG_TIMEOUT' ? 'IMG_TIMEOUT' : 'IMG_UNKNOWN';

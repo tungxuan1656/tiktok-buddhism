@@ -28,7 +28,7 @@ export const VALID_MODES = ['original', 'adaptation', 'verbatim'];
 export const VALID_SCENE_TYPES = ['event', 'simile', 'concept'];
 export const VALID_SLIDE_ROLES = ['cover', 'quote', 'commentary', 'closing'];
 
-export const UNRESOLVED_STATES = new Set(['in_flight', 'unknown', 'received', 'normalize_failed']);
+export const UNRESOLVED_STATES = new Set(['prepared', 'in_flight', 'unknown', 'received', 'normalize_failed']);
 export const RECONCILED_STATES = new Set(['reconciled_failed', 'reconciled_superseded']);
 
 export const INTERNAL_PATTERNS = [

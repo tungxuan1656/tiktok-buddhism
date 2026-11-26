@@ -3,7 +3,7 @@ import { basename, join, resolve } from 'node:path';
 import { sha256Bytes, sha256Canonical } from './fingerprint.mjs';
 import { confineRelativeFile, confineTargetPath, writeAtomic } from './paths.mjs';
 import { MAX_ATTEMPTS_PER_SLIDE, MAX_EPISODE_JSON_BYTES, MAX_IMAGE_BYTES } from './policy.mjs';
-import { attemptIssue, blockingAttempt, episodeAttempts, readRejection, statIfPresent, verifiedDraft, visualAttempts } from './resume.mjs';
+import { attemptIssue, attemptState, readRejection, statIfPresent, verifiedDraft, visualAttempts } from './resume.mjs';
 import { imageMime, isSha256, readEpisodeJson, validateEpisodeData } from './schema.mjs';
 
 export class EpisodeStateError extends Error {
@@ -103,7 +103,7 @@ export async function episodeBundle(dir) {
 }
 
 export async function blockingEpisodeAttempt(dir) {
-  return blockingAttempt(await episodeAttempts(dir));
+  return (await attemptState(dir)).blocked;
 }
 
 export async function pageState(dir, slide, fp, attempts) {

@@ -2,14 +2,15 @@ import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { changeEpisode } from '../scripts/episode-tools.mjs';
-import { assertEpisodeIdentity, blockingEpisodeAttempt, bundleTag, deliverableStatus, episodeBundle, EpisodeStateError, imageBytes, isEpisodeCode, readEpisode } from '../scripts/lib/episode.mjs';
+import { assertEpisodeIdentity, bundleTag, deliverableStatus, episodeBundle, EpisodeStateError, imageBytes, isEpisodeCode, readEpisode } from '../scripts/lib/episode.mjs';
 import { withEpisodeLock } from '../scripts/lib/lock.mjs';
-import { activeLookahead, imageError, lookaheadCanReview, statIfPresent } from '../scripts/lib/resume.mjs';
+import { attemptState, imageError, LOOKAHEAD_GUARD, LookaheadStateError, lookaheadCanReview, statIfPresent } from '../scripts/lib/resume.mjs';
 import { TelegramError } from './api.mjs';
 
 const states = { draft: 'đang soạn hoặc chỉnh', locked: 'đang làm ảnh', ready_for_review: 'đã xong, chờ đăng', published: 'đã đăng' };
 const label = ep => `${ep.code}: "${ep.title.replace(/\s+/g, ' ').trim()}"`;
 const number = code => Number(code.slice(1));
+const inspectMessage = code => `${code} cần kiểm tra trước khi tiếp tục. Hãy chạy handoff cho tập này.`;
 const MEDIA_GROUP_SIZE = 10;
 const TELEGRAM_MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 const MAX_MESSAGE_CHARS = 3900;
@@ -189,6 +190,7 @@ export class Bot {
       if (error.message.startsWith('Timed out waiting for episode lock')) {
         return answer(`${code} đang được xử lý; thử lại sau.`);
       }
+      if (error instanceof LookaheadStateError) return answer(inspectMessage(code));
       if (error instanceof EpisodeStateError && error.code === 'STALE_BUNDLE') {
         await answer(`${code} đã cập nhật bản mới; hãy xem bản mới trước khi đánh dấu đã đăng.`);
         await clearButtons();
@@ -234,6 +236,7 @@ export class Bot {
         let bundle;
         try { bundle = await episodeBundle(dir); }
         catch (error) {
+          if (error instanceof LookaheadStateError) return say(inspectMessage(code));
           if (!(error instanceof EpisodeStateError)) throw error;
           return say(`${label(ep)} ${ep.status === 'published' ? 'đã đăng nhưng không có' : 'chưa có'} đủ ảnh thành phẩm xác minh được.`);
         }
@@ -310,12 +313,13 @@ export class Bot {
       const dir = join(this.root, code);
       try {
         const version = (await statIfPresent(join(dir, 'artifact/episode.json')))?.mtimeMs;
-        if (version === undefined || this.scanned.get(code) === version) continue;
+        const guardPath = join(dir, LOOKAHEAD_GUARD);
+        if (version === undefined || (this.scanned.get(code) === version && !await statIfPresent(guardPath))) continue;
         const pending = await withEpisodeLock(dir, async () => {
           const ep = await this.episode(code);
           if (ep.status === 'published' && ep.legacy) return false;
-          const error = await blockingEpisodeAttempt(dir);
-          if (lookaheadCanReview(error) && await activeLookahead(dir, error)) return null;
+          const { blocked: error, running } = await attemptState(dir);
+          if (running && lookaheadCanReview(error)) return null;
           if (error) {
             const uncertain = error.state === 'in_flight' || error.state === 'unknown';
             const errorCode = imageError(error);
@@ -324,7 +328,12 @@ export class Bot {
           if (!deliverableStatus(ep.status)) return null;
           const bundle = await episodeBundle(dir);
           return { key: `done:${code}:${bundle.key}`, message: `${label(ep)} đã xong.`, replyMarkup: viewMarkup(code) };
-        }, { timeoutMs: 0 });
+        }, { timeoutMs: 0 }).catch(async error => {
+          if (!(error instanceof LookaheadStateError)) throw error;
+          const guard = await statIfPresent(guardPath);
+          const incident = guard ? `${guard.ino}:${guard.birthtimeMs}` : version;
+          return { key: `inspect:${code}:${incident}`, message: inspectMessage(code) };
+        });
         if (pending === false || (pending && await this.notice(pending.key, pending.message, pending.replyMarkup) && pending.key.startsWith('done:'))) {
           this.scanned.set(code, version);
         }

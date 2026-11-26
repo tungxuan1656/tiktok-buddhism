@@ -12,7 +12,9 @@ Chỉ dùng `scripts/draw-image.mjs`, không gọi thủ công và không thử 
 
 ## Khi Dừng
 
+- `next: busy` chỉ là đang giữ khóa tập; chạy lại `handoff`, không coi đó là lỗi API. `next: inspect_attempt` nghĩa là khóa và hồ sơ gối đầu không khớp. Dừng vẽ và đối soát; giữ nguyên `.lookahead-active.json`, `.lookahead-lock` và `drafts/`. Kiểm tra tiến trình, kết quả phía API và khôi phục hồ sơ gốc nếu có trước khi làm tiếp; không tạo khóa mới để bỏ chặn. Khi nâng cấp, chờ các tiến trình gối đầu cũ kết thúc trước.
 - Chạy `node scripts/episode-tools.mjs handoff episodes/Tn`. Mọi lượt API lỗi/chưa rõ, kể cả lượt gối đầu bị gián đoạn, chặn cả tập. Chỉ phục hồi khi handoff báo `resolve_attempt`, không đối soát một request còn đang chạy. Giữ ảnh đã chốt, JPEG nháp còn đúng và hồ sơ. Bot báo mã an toàn; không chuyển response/prompt lỗi ra Telegram.
 - Dùng `blocked.path` (ví dụ `drafts/001-a1`) hoặc `blocked.name` từ handoff làm `ATTEMPT`. Nếu `raw_recoverable: true`, chạy `node scripts/draw-image.mjs --normalize episodes/Tn ATTEMPT` để phục hồi từ ảnh raw PNG/JPEG đã xác minh, kể cả khi JPEG nháp bị mất hoặc hỏng. Lệnh không POST. Sau đó mở JPEG và kiểm như thường.
 - Nếu `raw_recoverable: null`, xem `raw_issue` và xử lý lỗi ImageMagick trước khi đối soát hoặc vẽ lại. Handoff vẫn giữ lượt ở trạng thái chặn; không kết luận ảnh raw không dùng được chỉ vì bộ giải mã lỗi.
+- Nếu `code: IMG_NOT_SENT`, tiến trình dừng trước khi gửi POST. Chạy `--reconcile` với ghi chú chưa gửi; không cần đối chiếu phía API.
 - Nếu `raw_recoverable: false` do ảnh raw được xác nhận hỏng, giữ nguyên `response.bin` và ghi kết quả khi đối soát. Nếu chưa rõ lần trước đã tạo ảnh/tính phí chưa, đối chiếu phía API trước. Nếu có thể xác nhận không dùng được kết quả và đã xử lý nguyên nhân, ghi `node scripts/draw-image.mjs --reconcile episodes/Tn ATTEMPT --note "kết quả đã đối soát"`. Lệnh chỉ ghi nhận, không gọi ảnh. Không dùng để bỏ qua raw còn phục hồi được hoặc kết quả chưa rõ.

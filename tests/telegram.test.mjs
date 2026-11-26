@@ -10,8 +10,8 @@ import test from 'node:test';
 import { createEpisode, changeEpisode, episodeHandoff } from '../scripts/episode-tools.mjs';
 import { draw, recoverAttempt } from '../scripts/draw-image.mjs';
 import { exportSlide } from '../scripts/export-slide.mjs';
-import { episodeBundle, readEpisode, writeEpisode } from '../scripts/lib/episode.mjs';
-import { withEpisodeLock } from '../scripts/lib/lock.mjs';
+import { bundleTag, episodeBundle, readEpisode, writeEpisode } from '../scripts/lib/episode.mjs';
+import { LOOKAHEAD_LOCK, withEpisodeLock } from '../scripts/lib/lock.mjs';
 import { Telegram } from '../telegram/api.mjs';
 import { Bot, openDelivery, splitChunks } from '../telegram/bot.mjs';
 import { pollUpdates } from '../telegram/main.mjs';
@@ -465,6 +465,73 @@ test('a live lookahead does not alert the owner, but its API failure stops the e
   await assert.rejects(draw({ episodeDir: dir, slide: 2, request: () => assert.fail('unexpected POST') }), /Episode blocked/);
   await bot.scan();
   assert.deepEqual(messages, ['T1: "Vẽ gối đầu" đang dừng ở ảnh 2 — IMG_HTTP_429.']);
+});
+
+test('inspect_attempt alerts once and an old publish button does not stall polling', async t => {
+  const { root, dir } = await setup(t, 'Vẽ lại', ['Một trang.', 'Hai.']);
+  await fill(dir, 2);
+  const oldTag = bundleTag((await episodeBundle(dir)).key);
+  await changeEpisode(dir, 'reopen');
+  const edited = await readEpisode(dir);
+  edited.slides[0].text = 'Trang đầu đã sửa.';
+  edited.slides[1].text = 'Trang hai đã sửa.';
+  await writeEpisode(dir, edited);
+  await changeEpisode(dir, 'lock');
+  await draw({ episodeDir: dir, slide: 1, request: () => new Response(png()) });
+  await assert.rejects(draw({ episodeDir: dir, slide: 2, lookahead: true,
+    request: () => new Response('private API response', { status: 429 }),
+  }), /Do not retry/);
+  assert.equal((await episodeHandoff(dir)).blocked.code, 'IMG_HTTP_429');
+  await rm(join(dir, LOOKAHEAD_LOCK));
+  assert.equal((await episodeHandoff(dir)).next, 'inspect_attempt');
+
+  const fixture = mock(root);
+  const { bot, delivery, messages, callbacks, edits } = fixture;
+  const controller = new AbortController();
+  const offsets = [];
+  const batch = [cbUpdate(1, `publish:T1:${oldTag}`), update(2, 'episodes')];
+  try {
+    await pollUpdates({ telegram: { poll: async offset => {
+      offsets.push(offset);
+      if (offsets.length === 2) controller.abort();
+      return batch;
+    } }, bot, delivery, signal: controller.signal, log: () => {}, wait: async () => {} });
+    assert.deepEqual(offsets, [0, 3]);
+    assert.deepEqual(callbacks, [{ callback_query_id: 'cb-1', text: 'T1 cần kiểm tra trước khi tiếp tục. Hãy chạy handoff cho tập này.' }]);
+    assert.deepEqual(messages, [callbacks[0].text, 'Danh sách tập:\nT1: "Vẽ lại" — đang làm ảnh']);
+    assert.deepEqual(edits, []);
+    assert.equal((await readEpisode(dir)).status, 'locked');
+  } finally { delivery.close(); }
+
+  const restarted = mock(root);
+  t.after(restarted.delivery.close);
+  await restarted.bot.scan();
+  assert.deepEqual(restarted.messages, []);
+});
+
+test('a corrupt lookahead lock blocks publishing without stalling Telegram polling', async t => {
+  const { root, dir } = await setup(t, 'Đã hoàn tất', ['Một trang.']);
+  await fill(dir, 1);
+  const tag = bundleTag((await episodeBundle(dir)).key);
+  const lock = join(dir, LOOKAHEAD_LOCK);
+  await writeFile(lock, 'not a SQLite database');
+  assert.equal((await episodeHandoff(dir)).next, 'inspect_attempt');
+
+  const { bot, delivery, callbacks, messages } = mock(root);
+  t.after(delivery.close);
+  const controller = new AbortController();
+  const offsets = [];
+  await pollUpdates({ telegram: { poll: async offset => {
+    offsets.push(offset);
+    if (offsets.length === 2) controller.abort();
+    return [cbUpdate(1, `publish:T1:${tag}`), update(2, 'episodes')];
+  } }, bot, delivery, signal: controller.signal, log: () => {}, wait: async () => {} });
+
+  assert.deepEqual(offsets, [0, 3]);
+  assert.match(callbacks[0]?.text, /T1 cần kiểm tra.*handoff/);
+  assert.deepEqual(messages, [callbacks[0].text, 'Danh sách tập:\nT1: "Đã hoàn tất" — đã xong, chờ đăng']);
+  assert.equal((await readEpisode(dir)).status, 'ready_for_review');
+  assert.equal(await readFile(lock, 'utf8'), 'not a SQLite database');
 });
 
 test('published legacy without certified originals gets no notices or draft substitutes', async t => {

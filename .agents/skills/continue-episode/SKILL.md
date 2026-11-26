@@ -34,13 +34,16 @@ Do not redraw slides already marked `action: "keep"`.
 
 ## 3. Follow the `next` Action from Handoff
 
+- **`busy`**: retry handoff after a short wait; this is not an API failure.
+- **`inspect_attempt`**: stop and preserve the lookahead files. Report the mismatch; follow `docs/image-api.md` before sending or reconciling any request.
 - **`resolve_attempt`**: inspect `blocked` and recover per `docs/image-api.md`:
   - `raw_recoverable: true`: normalize locally (no API call), then open and verify the compressed JPEG as usual:
     ```bash
     node scripts/draw-image.mjs --normalize episodes/Tn ATTEMPT
     ```
   - `raw_recoverable: null`: inspect `raw_issue` and fix ImageMagick/decoder errors before reconciling or redrawing.
-  - `raw_recoverable: false`: keep `response.bin`; only after verifying the API-side outcome and fixing the root cause, run:
+  - `code: IMG_NOT_SENT`: the process stopped before POST. Use `--reconcile` with a note that it was never sent; no API-side lookup is needed.
+  - Otherwise, `raw_recoverable: false`: keep `response.bin`; only after verifying the API-side outcome and fixing the root cause, run:
     ```bash
     node scripts/draw-image.mjs --reconcile episodes/Tn ATTEMPT --note "verified reconciliation outcome"
     ```

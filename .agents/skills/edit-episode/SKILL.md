@@ -28,7 +28,7 @@ Inspect the current state first:
 node scripts/episode-tools.mjs handoff episodes/Tn
 ```
 
-If handoff lists an active `in_progress` image, wait for it to finish before editing. If handoff returns `resolve_attempt`, resolve the blocked attempt per `docs/image-api.md` before reopening or locking.
+If handoff returns `busy`, retry it after a short wait. If it lists an active `in_progress` image, wait for it to finish before editing. For `resolve_attempt` or `inspect_attempt`, follow `docs/image-api.md` before reopening or locking.
 
 ## 3. Apply the Requested Edit
 

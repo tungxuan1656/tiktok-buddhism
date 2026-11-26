@@ -4,9 +4,11 @@ import { confineTargetPath } from './paths.mjs';
 
 export const LOOKAHEAD_LOCK = '.lookahead-lock';
 
-export async function acquireEpisodeLock(episodeDir, { timeoutMs = 10_000, name = '.episode-lock', allowBusy = false } = {}) {
+export class EpisodeLockBusyError extends Error {}
+
+export async function acquireEpisodeLock(episodeDir, { timeoutMs = 10_000, name = '.episode-lock', probe = false } = {}) {
   const path = await confineTargetPath(episodeDir, name);
-  const db = new DatabaseSync(path);
+  const db = new DatabaseSync(path, { readOnly: probe });
   const deadline = Date.now() + timeoutMs;
   try {
     // SQLite provides an OS-released file lock; no data is stored.
@@ -17,7 +19,7 @@ export async function acquireEpisodeLock(episodeDir, { timeoutMs = 10_000, name 
       } catch (error) {
         if (error.errcode !== 5) throw error; // SQLITE_BUSY
         if (Date.now() >= deadline) {
-          if (!allowBusy) throw new Error(`Timed out waiting for episode lock (${path})`);
+          if (!probe) throw new EpisodeLockBusyError(`Timed out waiting for episode lock (${path})`);
           db.close();
           return null;
         }

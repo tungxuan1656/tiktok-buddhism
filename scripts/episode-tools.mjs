@@ -2,10 +2,10 @@ import { mkdir, mkdtemp, readdir, rename, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertEpisodeIdentity, blockingEpisodeAttempt, bundleTag, canLookahead, deliverableStatus, episodeBundle, episodePages, EpisodeStateError, imageBytes, isEpisodeCode, loadValidated, planHash, readEpisode, writeEpisode } from './lib/episode.mjs';
-import { withEpisodeLock } from './lib/lock.mjs';
+import { EpisodeLockBusyError, withEpisodeLock } from './lib/lock.mjs';
 import { confineTargetPath, stripDotSlash, writeAtomic } from './lib/paths.mjs';
 import { REPO_ROOT } from './lib/policy.mjs';
-import { activeLookahead, attemptIssue, blockingAttempt, episodeAttempts, imageError, lookaheadCanReview, readRejection, rejectionPath, statIfPresent, verifiedDraft } from './lib/resume.mjs';
+import { attemptIssue, attemptState, episodeAttempts, imageError, LookaheadStateError, lookaheadCanReview, readRejection, rejectionPath, statIfPresent, verifiedDraft } from './lib/resume.mjs';
 import { slidePrompt } from './lib/prompt.mjs';
 
 export async function createEpisode(root, title, request) {
@@ -92,9 +92,13 @@ export async function episodeHandoff(dir) {
     const episode = await readEpisode(dir);
     assertEpisodeIdentity(dir, episode);
     const base = { code: episode.code, title: episode.title, status: episode.status };
-    const attempts = await episodeAttempts(dir);
-    const blocked = blockingAttempt(attempts);
-    const running = await activeLookahead(dir, blocked);
+    let state;
+    try { state = await attemptState(dir); }
+    catch (error) {
+      if (!(error instanceof LookaheadStateError)) throw error;
+      return { ...base, next: 'inspect_attempt', issue: error.message };
+    }
+    const { attempts, blocked, running } = state;
     if (blocked && !running) return { ...base, next: 'resolve_attempt', blocked: await attemptIssue(dir, blocked) };
     if (deliverableStatus(episode.status)) {
       try { return { ...base, next: 'done', files: (await episodeBundle(dir)).files.map(f => f.file) }; }
@@ -123,16 +127,18 @@ export async function episodeHandoff(dir) {
     return { ...base, kept: pages.filter(p => p.action === 'keep').map(p => p.slide), total: pages.length,
       next: running && (failure || page?.action !== 'review') ? 'wait_for_image' : page?.action ?? 'finalize',
       page, blocked: failure ? await attemptIssue(dir, blocked) : page?.blocked, in_progress, lookahead };
-  }, { timeoutMs: 0 });
+  }, { timeoutMs: 500 }).catch(error => {
+    if (!(error instanceof EpisodeLockBusyError)) throw error;
+    return { next: 'busy' };
+  });
 }
 
 export async function rejectImage(dir, input, note) {
   if (typeof note !== 'string' || !note.trim() || Buffer.byteLength(note) > 4000) throw new Error('Describe the visual fault (up to 4000 bytes)');
   const file = stripDotSlash(input);
   return withEpisodeLock(dir, async () => {
-    const attempts = await episodeAttempts(dir);
-    const blocked = blockingAttempt(attempts);
-    if (blocked && (!lookaheadCanReview(blocked) || !await activeLookahead(dir, blocked))) {
+    const { attempts, blocked, running } = await attemptState(dir);
+    if (blocked && (!lookaheadCanReview(blocked) || !running)) {
       throw new EpisodeStateError(`Episode blocked by ${blocked.path} (${imageError(blocked)}); run handoff`);
     }
     const episode = await readEpisode(dir);
@@ -178,8 +184,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const slide = Number(rest[0]);
       const { episode, validation } = await loadValidated(dir);
       if (!Number.isInteger(slide) || slide < 1 || slide > episode.slides.length) throw new Error('Invalid slide number');
-      const state = (await episodeHandoff(dir)).page;
-      result = slidePrompt(dir, episode, validation, slide, state?.slide === slide ? state.rejected?.note : undefined);
+      const state = await episodeHandoff(dir);
+      if (state.next === 'busy' || state.next === 'inspect_attempt') throw new Error(state.issue ?? 'Episode busy; run handoff again');
+      result = slidePrompt(dir, episode, validation, slide, state.page?.slide === slide ? state.page.rejected?.note : undefined);
     } else throw new Error('Unknown command or invalid arguments');
     console.log(JSON.stringify(result, null, 2));
   } catch (error) {

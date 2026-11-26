@@ -4,8 +4,8 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 export const isSafeId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value);
 export const isSafeVersion = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/.test(value) && !value.includes('..');
 
-export async function writeAtomic(target, content, mode = 0o644) {
-  await mkdir(dirname(target), { recursive: true });
+export async function writeAtomic(target, content, mode = 0o644, { createParent = true } = {}) {
+  if (createParent) await mkdir(dirname(target), { recursive: true });
   const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(tmp, content, { encoding: 'utf8', mode });
   await rename(tmp, target);

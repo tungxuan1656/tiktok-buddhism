@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { checkPath, checkedSlide, episodePages, imagePath, loadValidated } from './lib/episode.mjs';
 import { withEpisodeLock } from './lib/lock.mjs';
 import { confineRelativeFile, confineTargetPath, stripDotSlash, writeAtomic } from './lib/paths.mjs';
-import { activeLookahead, blockingAttempt, episodeAttempts, lookaheadCanReview, readRejection, statIfPresent } from './lib/resume.mjs';
+import { attemptState, lookaheadCanReview, readRejection, statIfPresent } from './lib/resume.mjs';
 import { readImageInfo } from './lib/schema.mjs';
 
 export async function exportSlide(dir, file, note) {
@@ -12,13 +12,12 @@ export async function exportSlide(dir, file, note) {
   file = stripDotSlash(file);
   return withEpisodeLock(dir, async () => {
     const { episode, validation } = await loadValidated(dir);
-    const attempts = await episodeAttempts(dir);
+    const { attempts, blocked, running } = await attemptState(dir);
     const attempt = attempts.find(a => `${a.path}/image.jpg` === file);
     const slide = attempt?.plan.slide;
-    const blocked = blockingAttempt(attempts);
     if (!attempt || attempt.plan.character || attempt.state !== 'succeeded' || !Number.isInteger(slide) ||
         slide < 1 || slide > episode.slides.length || (blocked &&
-          (slide >= blocked.plan.slide || !lookaheadCanReview(blocked) || !await activeLookahead(dir, blocked)))) {
+          (slide >= blocked.plan.slide || !lookaheadCanReview(blocked) || !running))) {
       throw new Error('Expected a successful slide draft in an unblocked episode');
     }
     const fp = validation.slideFingerprints[slide - 1];

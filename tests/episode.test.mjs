@@ -1,14 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { createEpisode, changeEpisode, episodeHandoff, rejectImage } from '../scripts/episode-tools.mjs';
 import { draw, recoverAttempt } from '../scripts/draw-image.mjs';
 import { exportSlide } from '../scripts/export-slide.mjs';
 import { checkPath, EPISODE_JSON, episodeBundle, loadValidated, readEpisode, writeEpisode } from '../scripts/lib/episode.mjs';
 import { sha256Bytes } from '../scripts/lib/fingerprint.mjs';
+import { LOOKAHEAD_LOCK, withEpisodeLock } from '../scripts/lib/lock.mjs';
+import { LOOKAHEAD_GUARD } from '../scripts/lib/resume.mjs';
 import { MAX_EPISODE_JSON_BYTES } from '../scripts/lib/policy.mjs';
 
 const page = text => ({ text, scene: 'A simple scene', scene_type: 'concept', characters: [] });
@@ -144,7 +148,138 @@ test('lookahead overlaps review only one slide ahead, and keeps its draft throug
   await exportSlide(dir, second, 'Checked reused lookahead JPEG');
 });
 
-test('an interrupted lookahead becomes an unresolved attempt after its lock is gone', async t => {
+test('handoff reports lock contention as busy, not an image failure', async t => {
+  const dir = await locked(t);
+  await withEpisodeLock(dir, async () => {
+    assert.deepEqual(await episodeHandoff(dir), { next: 'busy' });
+  });
+  assert.equal((await episodeHandoff(dir)).next, 'draw');
+});
+
+for (const checkpoint of ['draft', 'guard']) {
+  test(`a lookahead killed just after publishing its ${checkpoint} can be reconciled as unsent`, { timeout: 12_000 }, async t => {
+    const dir = await locked(t);
+    const image = png('white');
+    await draw({ episodeDir: dir, slide: 1, request: () => new Response(image) });
+    const destination = join(dir, checkpoint === 'draft' ? 'drafts/002-a1' : LOOKAHEAD_GUARD);
+    const child = spawn(process.execPath, ['--input-type=module', '-e', `
+      import { promises as fs } from 'node:fs';
+      import { once } from 'node:events';
+      import { syncBuiltinESMExports } from 'node:module';
+      const rename = fs.rename;
+      fs.rename = async (from, to) => {
+        await rename(from, to);
+        if (to === process.argv[2]) {
+          process.send('checkpoint');
+          await once(process, 'message');
+        }
+      };
+      syncBuiltinESMExports();
+      const { draw } = await import(${JSON.stringify(new URL('../scripts/draw-image.mjs', import.meta.url).href)});
+      await draw({ episodeDir: process.argv[1], slide: 2, lookahead: true, request: () => {
+        throw new Error('Unexpected POST before the test checkpoint');
+      } });
+    `, dir, destination], { stdio: ['ignore', 'ignore', 'inherit', 'ipc'] });
+    const exited = once(child, 'exit');
+    try {
+      assert.equal(await Promise.race([once(child, 'message').then(([message]) => message), exited]), 'checkpoint');
+    } finally {
+      child.kill('SIGKILL');
+      await exited;
+    }
+    const handoff = await episodeHandoff(dir);
+    assert.equal(handoff.next, 'resolve_attempt');
+    assert.equal(handoff.blocked.path, 'drafts/002-a1');
+    assert.equal(handoff.blocked.code, 'IMG_NOT_SENT');
+    await recoverAttempt(dir, handoff.blocked.path, { note: 'Stopped before POST' });
+    await assert.rejects(stat(join(dir, LOOKAHEAD_GUARD)), { code: 'ENOENT' });
+    assert.equal((await episodeHandoff(dir)).lookahead, 2);
+    assert.equal(await draw({ episodeDir: dir, slide: 2, lookahead: true, request: () => new Response(image) }), join(dir, 'drafts/002-a2/image.jpg'));
+  });
+}
+
+test('a killed lookahead leaves recoverable raw while the episode lock is busy', { timeout: 12_000 }, async t => {
+  const dir = await locked(t);
+  const image = png('white');
+  await draw({ episodeDir: dir, slide: 1, request: () => new Response(image) });
+  const child = spawn(process.execPath, ['--input-type=module', '-e', `
+    import { once } from 'node:events';
+    import { draw } from ${JSON.stringify(new URL('../scripts/draw-image.mjs', import.meta.url).href)};
+    await draw({ episodeDir: process.argv[1], slide: 2, lookahead: true, request: async () => {
+      process.send('post');
+      const [base64] = await once(process, 'message');
+      return new Response(Buffer.from(base64, 'base64'));
+    } });
+  `, dir], { stdio: ['ignore', 'ignore', 'inherit', 'ipc'] });
+  const exit = once(child, 'exit');
+  t.after(async () => { child.kill('SIGKILL'); await exit; });
+  assert.equal(await Promise.race([once(child, 'message').then(([message]) => message), exit]), 'post');
+  assert.equal((await episodeHandoff(dir)).in_progress.slide, 2);
+
+  const work = join(dir, 'drafts/002-a1');
+  await withEpisodeLock(dir, async () => {
+    child.send(image.toString('base64'));
+    const deadline = Date.now() + 5_000;
+    while (true) {
+      const raw = await readFile(join(work, 'response.bin')).catch(error => {
+        if (error.code !== 'ENOENT') throw error;
+        return null;
+      });
+      if (raw?.equals(image)) break;
+      assert.ok(Date.now() < deadline, 'raw checkpoint should not need the episode lock');
+      await sleep(25);
+    }
+    assert.equal(JSON.parse(await readFile(join(work, 'status.json'))).response_sha256, sha256Bytes(image));
+    child.kill('SIGKILL');
+    assert.deepEqual(await exit, [null, 'SIGKILL']);
+  });
+  const handoff = await episodeHandoff(dir);
+  assert.equal(handoff.next, 'resolve_attempt');
+  assert.equal(handoff.blocked.raw_recoverable, true);
+  assert.equal(await recoverAttempt(dir, handoff.blocked.path), join(work, 'image.jpg'));
+  await assert.rejects(stat(join(dir, LOOKAHEAD_GUARD)), { code: 'ENOENT' });
+  await exportSlide(dir, 'drafts/001-a1/image.jpg', 'Checked first slide');
+  assert.equal((await episodeHandoff(dir)).page.file, 'drafts/002-a1/image.jpg');
+});
+
+for (const missing of ['drafts/002-a1', LOOKAHEAD_LOCK]) {
+  test(`a live lookahead blocks drawing and recovery after losing ${missing}`, async t => {
+    const dir = await locked(t);
+    const image = png('white');
+    const first = relative(dir, await draw({ episodeDir: dir, slide: 1, request: () => new Response(image) }));
+    const started = Promise.withResolvers();
+    const response = Promise.withResolvers();
+    const pending = draw({ episodeDir: dir, slide: 2, lookahead: true, request: () => {
+      started.resolve();
+      return response.promise;
+    } });
+    await Promise.race([started.promise, pending]);
+    const file = join(dir, missing);
+    const backup = join(dir, '.test-backup');
+    await rename(file, backup);
+    try {
+      const mismatch = /Lookahead lock and attempt records do not match/;
+      const assertBlocked = async () => {
+        assert.equal((await episodeHandoff(dir)).next, 'inspect_attempt');
+        await assert.rejects(draw({ episodeDir: dir, slide: 2, request: () => assert.fail('unexpected POST') }), mismatch);
+        await assert.rejects(recoverAttempt(dir, '002-a1', { note: 'Must not reconcile a live request' }), mismatch);
+        await assert.rejects(exportSlide(dir, first, 'Must not write during inconsistent state'), mismatch);
+      };
+      await assertBlocked();
+      await assert.rejects(stat(file), { code: 'ENOENT' });
+      if (missing === LOOKAHEAD_LOCK) {
+        await writeFile(file, '');
+        await assertBlocked();
+      }
+    } finally {
+      await rename(backup, file);
+      response.resolve(new Response(image));
+      await pending;
+    }
+  });
+}
+
+test('an interrupted legacy lookahead can be recovered after its worker exits', async t => {
   const dir = await locked(t);
   const image = png('white');
   const request = () => new Response(image);
