@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
@@ -215,6 +215,57 @@ test('polling does not skip a command after a cursor write failure or cooldown',
       assert.equal(fixture.messages.length, 1);
     });
   }
+});
+
+test('crossing the cooldown boundary before the first document leaves /get pending', async t => {
+  const { root, dir } = await setup(t, 'Rate limit', ['First']);
+  await fill(dir, 1);
+  t.mock.timers.enable({ apis: ['Date'], now: 1000 });
+  let limited = true;
+  const { bot, delivery, messages, docs } = mock(root, () => limited ? reject(429, 31) : ok(), {
+    wait: async ms => { t.mock.timers.tick(ms); },
+  });
+  t.after(delivery.close);
+  await assert.rejects(bot.update(update(1, '/start')), { status: 429 });
+  limited = false;
+  messages.length = 0;
+  t.mock.timers.tick(999);
+  const document = bot.telegram.document.bind(bot.telegram);
+  t.mock.method(bot.telegram, 'document', (...args) => document(...args).catch(error => {
+    t.mock.timers.tick(2);
+    throw error;
+  }));
+  const command = update(2, '/get T1');
+  assert.equal(await bot.update(command), false);
+  assert.equal(delivery.offset(), 2);
+  assert.deepEqual(messages, []);
+  assert.deepEqual(docs, []);
+  assert.equal(await bot.update(command), true);
+  assert.equal(delivery.offset(), 3);
+  assert.deepEqual(docs.map(doc => doc.name), ['T1-001.jpg', 'T1-noi-dung.txt']);
+});
+
+test('missing or malformed scripts do not hold up later Telegram commands', async t => {
+  const { root, dir } = await setup(t, 'Invalid script', ['First']);
+  await writeFile(join(dir, 'artifact', 'episode.json'), '{');
+  await mkdir(join(root, 'T2'));
+  const { bot, delivery, messages, docs } = mock(root);
+  t.after(delivery.close);
+  const controller = new AbortController();
+  let polls = 0;
+  await pollUpdates({ telegram: { poll: async () => {
+    if (++polls > 1) controller.abort();
+    return [update(1, '/get T1'), update(2, '/get T2'), update(3, '/start')];
+  } }, bot, delivery, signal: controller.signal, wait: async () => controller.abort(), log: () => {} });
+  assert.equal(delivery.offset(), 4);
+  assert.deepEqual(messages.slice(0, 2), ['T1 chưa có kịch bản hợp lệ.', 'T2 chưa có kịch bản hợp lệ.']);
+  assert.match(messages[2], /Dùng \/episodes/);
+  assert.deepEqual(docs, []);
+
+  const ioError = Object.assign(new Error('fixture read failure'), { code: 'EIO' });
+  t.mock.method(bot, 'episode', async () => { throw ioError; });
+  await assert.rejects(bot.update(update(4, '/get T2')), ioError);
+  assert.equal(delivery.offset(), 4);
 });
 
 test('a definitive 429 retries only the same document, and long waits stop the bundle', async t => {

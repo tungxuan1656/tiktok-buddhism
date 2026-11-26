@@ -115,7 +115,12 @@ export class Bot {
     let total = 0;
     try {
       await withEpisodeLock(dir, async () => {
-        const ep = await this.episode(code);
+        let ep;
+        try { ep = await this.episode(code); }
+        catch (error) {
+          if (!(error instanceof SyntaxError) && error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error;
+          return say(`${code} chưa có kịch bản hợp lệ.`);
+        }
         if (!deliverableStatus(ep.status)) return say(`${label(ep)} đang làm hoặc đang chỉnh; chưa có bộ ảnh để gửi.`);
         let bundle;
         try { bundle = await episodeBundle(dir); }
@@ -132,7 +137,7 @@ export class Bot {
       }, { timeoutMs: 0 });
     } catch (error) {
       if (total) {
-        if (this.telegram.signal?.aborted || error.status === 403) return;
+        if (this.telegram.signal?.aborted || error.status === 403 || (!sent && error.notSent)) return;
         if (!sent && !(error instanceof TelegramError)) throw error;
         try { await say(`${code}: Telegram xác nhận ${sent}/${total} tệp. Hãy kiểm tra chat trước khi dùng lại /get ${code}.`); }
         catch { this.log('Telegram partial delivery status not confirmed.'); }
