@@ -4,7 +4,7 @@
 
 1. Nhận đầu bài trong phiên agent. Với tập mới chạy `node scripts/episode-tools.mjs new "Tên tập" "Nội dung người dùng gửi"`. `request` là bản để copy trên Telegram: giữ nguyên phần nội dung, không kèm lệnh hay chỉ dẫn sản xuất. Chỉ cập nhật `request` theo bản sửa người dùng đã cho phép. Script cấp mã từ thư mục hiện có; không tự đặt mã hoặc in mã lên slide.
 2. Dùng bản đầy đủ, rõ ràng do người dùng gửi làm nguồn, không tự tra lại kho nguồn hay web (xem [biên tập](editorial.md)), rồi viết đủ trang trực tiếp vào `episodes/Tn/artifact/episode.json` theo [mẫu](../templates/README.md); không chép cả kịch bản ra chat. Chia dòng/trang ở chỗ tự nhiên để chữ dễ đọc mà không đổi lời nguồn. Dùng [mẫu phong cách hiện hành](visual-style.md) và chỉ mở ảnh/JSON [nhân vật](../characters/README.md) cần dùng hoặc cần đối chiếu để chọn mẫu, rồi ghim đúng snapshot. Không mở hàng loạt tập cũ hay đọc mã CLI nếu tài liệu và lệnh chuẩn đủ dùng.
-3. Chạy `node scripts/episode-tools.mjs validate episodes/Tn` rồi `node scripts/episode-tools.mjs lock episodes/Tn`. Kịch bản là bản duy nhất. Script khóa nội dung và dấu vân tay nguồn/tham chiếu. Không cần người dùng duyệt trước khi vẽ.
+3. Rà gộp trang theo [hướng dẫn biên tập](editorial.md), rồi chạy `node scripts/episode-tools.mjs validate episodes/Tn` và `node scripts/episode-tools.mjs lock episodes/Tn`. Kịch bản là bản duy nhất. Script khóa nội dung và dấu vân tay nguồn/tham chiếu. Không cần người dùng duyệt trước khi vẽ.
 
 ## Vẽ gối đầu, kiểm từng trang
 
