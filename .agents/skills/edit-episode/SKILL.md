@@ -51,7 +51,7 @@ If the episode is blocked by `resolve_attempt`, resolve the blocked attempt per 
    ```bash
    node scripts/episode-tools.mjs reopen episodes/Tn
    ```
-2. Edit `episodes/Tn/artifact/episode.json` (and `source.txt` if `verbatim`) directly per `docs/editorial.md`. If the edit changes the copyable content, tell the user before correcting it and update `request` directly. Never derive it from slides or create a second script revision or copy.
+2. Edit `episodes/Tn/artifact/episode.json` (and `source.txt` if `verbatim`) directly per `docs/editorial.md`. If the edit changes the copyable content, update `request` directly with the wording the user authorized; ask first if the correction was not authorized. Never derive it from slides or create a second script revision or copy.
 3. Validate and re-lock:
    ```bash
    node scripts/episode-tools.mjs validate episodes/Tn

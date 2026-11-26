@@ -25,9 +25,9 @@ Use the template, the current style reference, and the source and character asse
 
 ## 2. Lock Down the Brief and Sources
 
-1. Capture the user's content from the prompt after `/new-episode` or the content section of the tagged file (see [brief-template.md](./references/brief-template.md)). Save it verbatim in `request` for Telegram, excluding production instructions. If the content needs a correction, tell the user first, then replace it in `request` before locking. For scripture, correct only against the verified source.
+1. Capture the user's content from the prompt after `/new-episode` or the content section of the tagged file (see [brief-template.md](./references/brief-template.md)). Save it verbatim in `request` for Telegram, excluding production instructions. Do not silently correct wording, spelling, or punctuation. Ask before changing the text unless the user has already authorized the correction; update `request` before locking.
 2. Classify the episode mode as `original`, `adaptation`, or `verbatim` per `docs/editorial.md`.
-3. **Check sutra / Buddha quote sources**: open the exact source being quoted, compare the wording, and record the file or URL and edition/locator where available. Search snippets and a matching canonical reference do not verify the wording of this edition. If the exact source or translation cannot be verified, **ask the user before drafting**. Never guess sources or alter wording/punctuation.
+3. **Set the source**: if the supplied text is complete and clear, use it as-is, label it user-provided, and do not reopen the local corpus or search the web. Ask before drafting if text is missing, quotation or attribution is unclear, or an anomaly could change the meaning. Consult external sources only if the user requests verification; follow `docs/editorial.md` and do not claim an edition was verified unless it was checked.
 4. If keeping verbatim wording readable exceeds the 35-slide maximum (including cover/closing), ask how to split across episodes rather than shrinking text or cutting quotes.
 
 ## 3. Allocate Code and Prepare Script
