@@ -4,8 +4,9 @@ Nhận yêu cầu trực tiếp trong phiên agent: tự viết kịch bản, d�
 
 Đọc [quy trình](docs/workflow.md), [biên tập](docs/editorial.md), [phong cách](docs/visual-style.md) và [kho nhân vật](characters/README.md) trước khi làm. Khi vẽ, làm theo [API ảnh](docs/image-api.md); không gọi trực tiếp hay gọi thử. Khi tiếp quản tập, chạy `handoff` trước khi đọc lại lịch sử hoặc vẽ.
 
-- Dùng mã tập đã cấp, một kịch bản ở `artifact/episode.json`, tối đa 35 trang tính cả bìa/kết. Chốt chữ trước khi vẽ slide. Không đổi nguồn để hợp thức hóa lỗi ảnh.
-- Làm từng trang: vẽ, mở JPEG đã nén, đọc từng chữ/dấu, đối chiếu bố cục và nhân vật, rồi chốt hoặc ghi lỗi ngay. Giữ trang đã kiểm và còn khớp. Không dùng ảnh nháp làm thành phẩm.
+- Soạn từ [mẫu](templates/episode.json) vào một `artifact/episode.json` với mã đã cấp, tối đa 35 trang tính cả bìa/kết. Không đọc hàng loạt tập cũ hay mã CLI nếu luồng chuẩn đủ dùng. Chốt chữ trước khi vẽ slide; không đổi nguồn để hợp thức hóa lỗi ảnh.
+- Làm từng trang: vẽ, mở JPEG đã nén, đọc từng chữ/dấu, đối chiếu bố cục và nhân vật, rồi dùng `--checked` hoặc `reject` ngay. Không chép lại kết quả từng trang vào `notes.md`. Giữ trang đạt còn khớp; không dùng ảnh nháp làm thành phẩm.
+- Báo tiến độ gọn mỗi 5–10 trang mới đạt hoặc khi cần báo việc bị chặn, không báo từng lượt ảnh.
 - Lời Đức Phật/lời kinh phải trích nguyên văn theo nguồn và bản dịch đã đối chiếu; thiếu nguồn chính xác thì hỏi. Truyện tự viết ghi rõ là minh họa/hư cấu. Không tự gán duyệt hay đăng thay người dùng.
 - Lỗi API dừng cả tập; không tự retry hoặc đổi model/provider. Giữ hồ sơ phục hồi. Không đọc, in hay lưu khóa bí mật.
 - Agent bàn giao trong phiên; [bot Telegram](docs/telegram.md) tự báo tin và chỉ gửi thành phẩm theo lệnh từ private chat chủ bot. Agent không tự gọi Telegram/đăng bài. Giữ nguyên `references/user-style-v1/` và `episodes/local-api-e2e-20261111-v1` là hồ sơ lịch sử, không áp dụng quy trình cũ trong đó.

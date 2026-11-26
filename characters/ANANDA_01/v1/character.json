@@ -1,0 +1,45 @@
+{
+  "id": "ANANDA_01",
+  "name": "Tôn giả Ananda (thiết kế minh họa)",
+  "aliases": [
+    "Ananda",
+    "Ānanda",
+    "Tôn giả Ananda",
+    "A-nan"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam tu sĩ Nam Á khoảng 30–35 tuổi, da sáng ấm, khuôn mặt trái xoan thanh tú, trán thoáng, lông mày đen mảnh cong nhẹ, mắt nâu dịu chăm chú, mũi thẳng, mỉm nhẹ điềm tĩnh; không râu/ria, không nếp nhăn tuổi già, tai bình thường.",
+    "hair": "Đầu cạo sạch trơn nhẵn, không tóc hoặc búi đỉnh đầu.",
+    "body": "Vóc dáng thanh mảnh cân đối, người trưởng thành trẻ, chân trần.",
+    "clothing": "Y tăng màu nâu quế đất ấm dịu (khác vàng ochre rực và khác nâu trầm), nếp vải mềm phủ vai trái và thân dưới dài gần cổ chân, vai phải để trần; không tay áo dài, không áo lót, không trang sức hay chuỗi hạt."
+  },
+  "keep": [
+    "Giữ gương mặt trái xoan trẻ thanh tú không râu/nếp nhăn, tai bình thường và đầu cạo sạch.",
+    "Giữ y tăng màu nâu quế đất ấm phủ vai trái, vai phải trần, không tay áo dài, chân trần.",
+    "Chất liệu chì màu 2D nét mảnh, biểu cảm hiền hòa trang nghiêm tiết chế trên nền giấy gần trắng."
+  ],
+  "can_vary": [
+    "Đứng, ngồi, quỳ đảnh lễ và tư thế tay tự nhiên",
+    "Hướng nhìn và biểu cảm nhẹ khi hỏi hoặc lắng nghe"
+  ],
+  "avoid": [
+    "Tóc xoăn búi đỉnh đầu hoặc dái tai dài như Đức Phật",
+    "Nếp nhăn/gò má góc cạnh lớn tuổi như Sàriputta hoặc y kín hai vai dài tay như TYKHEO_01",
+    "Râu, ria mép, trang sức, hào quang hoặc vật phụ ngoài yêu cầu",
+    "Khẳng định diện mạo lịch sử đã xác minh"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "T36",
+    "draft": "drafts/character-ANANDA_01-v1-a1",
+    "sha256": "3ba52d3f3b23c7ccbd5b2251851d2331e9e5a8a7fe4ad6a5f4358835494e8a57",
+    "note": "Thiết kế minh họa quy ước tạo trong tập T36; ảnh phong cách gốc chỉ gợi nét chì và nền giấy, không khẳng định diện mạo lịch sử."
+  },
+  "review_note": "Đã mở JPEG sau nén (1080x1440): một vị Tỳ kheo trẻ đứng đủ thân chân trần, đầu cạo sạch, tai bình thường, mặt trái xoan thanh tú không râu, tay chắp trước ngực tự nhiên, y nâu quế đất ấm phủ vai trái để trần vai phải, không chữ hoặc vật thừa. Chưa được người dùng duyệt."
+}
