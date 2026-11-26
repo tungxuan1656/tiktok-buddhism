@@ -1,24 +1,12 @@
 {
-  "name": "buddhism-telegram",
+  "name": "buddhism-slides",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=24.19.0"
-  },
+  "engines": { "node": ">=24.19.0" },
   "scripts": {
-    "start": "node --env-file-if-exists=.env bridge/main.ts",
-    "check": "node --env-file-if-exists=.env bridge/main.ts --check",
-    "identify": "node --env-file-if-exists=.env bridge/main.ts --identify",
-    "prune": "node bridge/main.ts --prune",
+    "start": "node --env-file-if-exists=.env telegram/cli.mjs",
+    "check": "node --env-file-if-exists=.env telegram/cli.mjs --check",
     "service:start": "pm2 start ecosystem.config.cjs --only buddhism-telegram",
-    "test": "node --test bridge/test/*.test.ts",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@earendil-works/pi-coding-agent": "1.5.2"
-  },
-  "devDependencies": {
-    "@types/node": "24.10.1",
-    "typescript": "5.9.3"
+    "test": "node --test tests/*.test.mjs"
   }
 }

@@ -10,7 +10,6 @@ import {
   isSafeVersion,
 } from './paths.mjs';
 import {
-  CHECKPOINT_SCHEMA_VERSION,
   INTERNAL_PATTERNS,
   MAX_EPISODE_JSON_BYTES,
   MAX_IMAGE_BYTES,
@@ -36,13 +35,26 @@ export function imageMime(bytes) {
   throw new Error('Expected a PNG or JPEG image');
 }
 
-export async function readImageInfo(path, { requireNormalized1080 = false, includeBytes = false, maxBytes = MAX_IMAGE_BYTES } = {}) {
+export class ImageDecoderError extends Error {}
+
+export async function readImageInfo(path, { requireNormalized1080 = false, includeBytes = false, maxBytes = MAX_IMAGE_BYTES, expectedSha256 } = {}) {
   const st = await stat(path);
   if (!st.isFile() || st.size <= 0 || st.size > maxBytes) throw new Error('Invalid image size');
   const bytes = await readFile(path);
   if (!bytes.length || bytes.length > maxBytes) throw new Error('Invalid image size');
+  const sha256 = sha256Bytes(bytes);
+  if (expectedSha256 !== undefined && sha256 !== expectedSha256) throw new Error('Image hash changed');
   const mime = imageMime(bytes);
-  const { stdout } = await exec('magick', ['identify', '-regard-warnings', '-format', '%m %w %h %n', path], { timeout: 30_000 });
+  const { stdout } = await exec('magick', ['identify', '-regard-warnings', '-format', '%m %w %h %n', path], {
+    timeout: 30_000, env: { ...process.env, LC_ALL: 'C' },
+  }).catch(cause => {
+    // shortcut: unknown diagnostics stay blocked; extend the allowlist only with verified corrupt samples.
+    const corrupt = /^identify: (?:insufficient image data in file|unexpected end-of-file|Premature end of JPEG file|[A-Z]{4}: (?:CRC error|incorrect (?:header|data) check)) `' @ (?:error|warning)\/(?:png|jpeg)\.c\//m;
+    if (cause.code === 1 && corrupt.test(cause.stderr?.replaceAll(path, ''))) {
+      throw new Error('Corrupt PNG or JPEG image', { cause });
+    }
+    throw new ImageDecoderError('ImageMagick could not verify the image', { cause });
+  });
   const match = /^(PNG|JPEG) (\d+) (\d+) 1$/.exec(stdout);
   if (!match || (mime === 'image/png') !== (match[1] === 'PNG')) throw new Error('Invalid or multiple images');
   const width = Number(match[2]);
@@ -50,28 +62,12 @@ export async function readImageInfo(path, { requireNormalized1080 = false, inclu
   if (requireNormalized1080 && (width !== OUTPUT_WIDTH || height !== OUTPUT_HEIGHT)) {
     throw new Error(`Expected ${OUTPUT_WIDTH}x${OUTPUT_HEIGHT} image, got ${width}x${height}`);
   }
-  const info = { mime, width, height, bytes: bytes.length, sha256: sha256Bytes(bytes) };
+  const info = { mime, width, height, bytes: bytes.length, sha256 };
   if (includeBytes) info.buffer = bytes;
   return info;
 }
 
 export const isSha256 = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
-
-export function checkpointIssue(check, { revision, slide, image, imageSha256, slideSha256 }) {
-  if (check?.schema_version !== CHECKPOINT_SCHEMA_VERSION) return `Outdated or unbound check checkpoint schema for slide ${slide}; re-export with --checked`;
-  if (check.revision !== revision || check.slide !== slide || check.image !== image) return `Check checkpoint mismatch for slide ${slide}`;
-  const legacy = check.legacy_import;
-  if (legacy ? check.request_sha256 !== null || !/^r\d{2,}$/.test(legacy.revision) ||
-      (legacy.snapshot_sha256 === undefined ? !isSha256(legacy.rechecked_from_sha256) : !isSha256(legacy.snapshot_sha256)) : !isSha256(check.request_sha256)) {
-    return `Check checkpoint for slide ${slide} is missing valid request_sha256 or legacy provenance`;
-  }
-  if (check.visual_check?.passed !== true || typeof check.visual_check.note !== 'string' || !check.visual_check.note.trim()) {
-    return `Invalid or unpassed visual_check in checkpoint for slide ${slide}`;
-  }
-  if (!imageSha256 || check.sha256 !== imageSha256 || check.image_sha256 !== imageSha256) return `SHA-256 mismatch for slide ${slide} (${image})`;
-  if (!slideSha256 || check.slide_content_sha256 !== slideSha256) return `Stale visual check for slide ${slide}: episode content or character snapshot changed after visual check`;
-  return null;
-}
 
 export async function readEpisodeJson(episodeFile, episodeDir) {
   const { real, stat } = await confineExistingPath([episodeDir], episodeFile, { requireRegularFile: true });
@@ -196,10 +192,11 @@ function verifyVerbatim(slides, srcRawRaw, sourceMeta) {
 }
 
 /**
- * Shared episode validation and deterministic slide fingerprinting used across
- * validate, build-prompts, draw (--slide, --character, --batch), and finalize.
+ * Shared validation and page fingerprints for authoring, drawing and delivery.
  */
-export async function validateEpisodeData(ep, episodeDir, { stage = 'build', includeCharacterSnapshots = stage !== 'character' } = {}) {
+export async function validateEpisodeData(ep, episodeDir, {
+  includeCharacterSnapshots = true, legacyVerbatimIssue,
+} = {}) {
   const dir = resolve(episodeDir);
   const issues = [];
   if (!ep || typeof ep !== 'object' || Array.isArray(ep)) {
@@ -210,6 +207,18 @@ export async function validateEpisodeData(ep, episodeDir, { stage = 'build', inc
   }
   if (!Array.isArray(ep.slides) || ep.slides.length < MIN_SLIDES || ep.slides.length > MAX_SLIDES) {
     issues.push(`slides[] must have ${MIN_SLIDES}-${MAX_SLIDES} items (got ${Array.isArray(ep.slides) ? ep.slides.length : 'none'})`);
+  }
+
+  let styleReference;
+  if (ep.style_ref !== undefined) {
+    try {
+      const { real, stat } = await confineRelativeFile(dir, ep.style_ref);
+      if (stat.size < 3 || stat.size > MAX_IMAGE_BYTES) throw new Error('Invalid image size');
+      const bytes = await readFile(real);
+      if (bytes.length !== stat.size) throw new Error('Image changed while reading');
+      imageMime(bytes);
+      styleReference = { path: real, sha256: sha256Bytes(bytes), bytes: bytes.length };
+    } catch (error) { issues.push(`Invalid style_ref: ${error.message}`); }
   }
 
   const seenChars = new Map();
@@ -245,7 +254,7 @@ export async function validateEpisodeData(ep, episodeDir, { stage = 'build', inc
     }
 
     let refCount = 1; // Style reference image is always slot 1.
-    let refBytes = 0;
+    let refBytes = styleReference?.bytes ?? 0;
     for (const c of s?.characters ?? []) {
       if (!isSafeId(c?.id) || !isSafeVersion(c?.version)) {
         issues.push(`Slide ${num}: invalid character reference (require safe id and version)`);
@@ -265,7 +274,7 @@ export async function validateEpisodeData(ep, episodeDir, { stage = 'build', inc
     }
     if (refCount > MAX_REFS) issues.push(`Slide ${num}: ${refCount} reference images exceed API maximum of ${MAX_REFS}`);
     if (refBytes > MAX_TOTAL_REF_BYTES) {
-      issues.push(`Slide ${num}: aggregate character reference payload (${refBytes} bytes) exceeds ${MAX_TOTAL_REF_BYTES} limit`);
+      issues.push(`Slide ${num}: aggregate reference payload (${refBytes} bytes) exceeds ${MAX_TOTAL_REF_BYTES} limit`);
     }
     resolvedCharsBySlide.push(slideChars);
   }
@@ -273,9 +282,7 @@ export async function validateEpisodeData(ep, episodeDir, { stage = 'build', inc
   let sourceSha256 = null;
   if (ep.mode === 'verbatim') {
     const { rel, full } = resolvePrimarySource(dir, ep);
-    if (!full) {
-      issues.push(`Invalid or escaping verbatim source path: ${rel}`);
-    } else {
+    if (full) {
       try {
         const checked = await confineRelativeFile(dir, rel);
         if (checked.stat.size > MAX_SOURCE_BYTES) {
@@ -289,17 +296,20 @@ export async function validateEpisodeData(ep, episodeDir, { stage = 'build', inc
           }
           if (Array.isArray(ep.slides)) {
             const errMsg = verifyVerbatim(ep.slides, srcBytes.toString('utf8'), sourceMeta);
-            if (errMsg) issues.push(`${errMsg} (${rel})`);
+            const issue = errMsg && `${errMsg} (${rel})`;
+            if (issue && issue !== legacyVerbatimIssue) issues.push(issue);
           }
         }
       } catch (err) {
         issues.push(`Mode verbatim requires confined regular file ${rel}: ${err.message}`);
       }
+    } else {
+      issues.push(`Invalid or escaping verbatim source path: ${rel}`);
     }
   }
 
   const slideFingerprints = issues.length === 0
-    ? slides.map((_, idx) => computeSlideFingerprint(ep, idx, resolvedCharsBySlide[idx] ?? [], sourceSha256))
+    ? slides.map((_, idx) => computeSlideFingerprint(ep, idx, resolvedCharsBySlide[idx] ?? [], styleReference?.sha256))
     : [];
 
   return {
@@ -308,6 +318,7 @@ export async function validateEpisodeData(ep, episodeDir, { stage = 'build', inc
     slideCount: slides.length,
     sourceSha256,
     resolvedCharsBySlide,
+    styleReference,
     slideFingerprints,
     issues,
   };

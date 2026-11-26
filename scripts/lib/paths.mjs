@@ -1,10 +1,8 @@
-import { link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { lstat, mkdir, realpath, rename, stat, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 
 export const isSafeId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value);
 export const isSafeVersion = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/.test(value) && !value.includes('..');
-export const isSafeRevision = value => typeof value === 'string' && /^r\d{2,}$/.test(value);
-export const isSafeAttempt = value => typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,31}$/i.test(value);
 
 export async function writeAtomic(target, content, mode = 0o644) {
   await mkdir(dirname(target), { recursive: true });
@@ -13,39 +11,7 @@ export async function writeAtomic(target, content, mode = 0o644) {
   await rename(tmp, target);
 }
 
-/**
- * Publish bytes atomically using a temporary file and hard link without overwriting
- * an existing distinct file. Returns 'exported' or 'reused'.
- */
-export async function publishExclusive(output, bytes, mismatch, mode = 0o600) {
-  const alreadyExported = async () => {
-    const existing = await lstat(output).catch(error => {
-      if (error.code !== 'ENOENT') throw error;
-    });
-    if (!existing) return false;
-    if (existing.isSymbolicLink() || !existing.isFile() || existing.size !== bytes.length || !(await readFile(output)).equals(bytes)) {
-      throw new Error(mismatch);
-    }
-    return true;
-  };
-
-  if (await alreadyExported()) return 'reused';
-  const dir = dirname(output);
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  const tempDir = await mkdtemp(join(dir, '.pub-'));
-  try {
-    const temp = join(tempDir, 'payload');
-    await writeFile(temp, bytes, { mode });
-    try { await link(temp, output); }
-    catch (error) {
-      if (error.code === 'EEXIST' && await alreadyExported()) return 'reused';
-      throw error;
-    }
-    return 'exported';
-  } finally {
-    await rm(tempDir, { recursive: true, force: true });
-  }
-}
+export const stripDotSlash = value => value.replace(/^(?:\.\/)+/, '');
 
 /** Check lexical containment of a relative path within baseDir without hitting disk. */
 export function confineRelativeLexical(baseDir, relPath) {
@@ -118,7 +84,6 @@ export async function confineTargetPath(baseDir, targetPath) {
   }
   // Walk upward until an existing directory/entry is found to verify no symlink redirects outside baseDir.
   let probe = absTarget;
-  const suffix = [];
   while (true) {
     const lst = await lstat(probe).catch(err => (err.code === 'ENOENT' ? null : Promise.reject(err)));
     if (lst) {
@@ -131,7 +96,6 @@ export async function confineTargetPath(baseDir, targetPath) {
     }
     const parent = dirname(probe);
     if (parent === probe) throw new Error(`Invalid target path: ${targetPath}`);
-    suffix.push(probe.slice(parent.length + 1).replace(/^[\\/]/, ''));
     probe = parent;
   }
 }

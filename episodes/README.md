@@ -1,46 +1,15 @@
-# Nội dung từng lần làm
+# Kho tập
 
-Mỗi lần làm một thư mục, Pi tự tạo; người dùng không phải điền file.
+Mỗi bộ ảnh đăng riêng có mã `Tn` dùng chung trong repo và Telegram. Dữ liệu tập không vào Git.
 
-	2026-11-12-lang-nghe/
-	  episode.json        Nội dung/kịch bản theo templates/episode.json
-	  notes.md            Yêu cầu gốc, quyết định, tự kiểm tra, phản hồi/duyệt
-	  source.txt          Chỉ cần khi trích nguyên văn
-	  references/         Snapshot JSON + ảnh nhân vật đã dùng
-	  prompts/            Prompt tạm khi đang làm
-	  drafts/             Raw/request/status/ảnh tạm, giữ khi chưa bàn giao xong
-	  output/rNN/         001.jpg… và episode.json của bản mới nhất đã gửi đủ
+    T36/
+      artifact/
+        episode.json     kịch bản và trạng thái duy nhất
+        checks/001.json  biên bản kiểm và hash của ảnh
+        images/001.jpg   ảnh đã kiểm
+      source.txt         nguồn nguyên văn nếu có
+      notes.md           ghi chú hoặc xác nhận nếu có
+      references/        JSON + ảnh nhân vật đúng phiên bản
+      drafts/            hồ sơ lượt vẽ và dữ liệu phục hồi
 
-Chỉ tạo thứ có dùng. `episode.json` là kịch bản duy nhất, không cần thêm
-storyboard/source/review JSON riêng khi thông tin đã có ở đó và notes.
-Revision đang làm tạm giữ bản trước để phục hồi. Sau khi bản mới đã gửi đủ
-qua Telegram, bridge dọn revision cũ/draft/prompt và handoff/outbox bị thay
-thế; chỉ giữ snapshot mới nhất để biết đúng chữ, ảnh và phiên bản nhân vật.
-Nguồn, notes, references và file còn được dùng làm nguồn không bị dọn. Văn bản trong JSON là nội dung chuẩn, không phải bản tự chép lại
-từ ảnh model tạo sai.
-
-- `draft`: đang làm; `ready_for_review`: Pi đã đọc/so đủ ảnh sau nén, chờ người dùng;
-  `approved`: người dùng đã xác nhận revision cụ thể, ghi vào notes.
-- Nhân vật `generated` dùng được, không cần duyệt mẫu trước.
-- Với nguyên văn, nối toàn bộ text phải bằng source.txt, kể cả khoảng trắng;
-  giữ nguyên dữ liệu nguồn. Ảnh được kiểm tra thị giác, không chứng minh mã
-  Unicode hoặc khoảng trắng vô hình từ pixel.
-- AI tạo cả tranh lẫn chữ. Pi đọc chữ và so nội dung/dấu; sai thì sửa ảnh,
-  không thêm renderer ghép chữ hoặc sửa nguồn để hợp thức hóa lỗi.
-- Lưu kết quả tự kiểm tra từng trang vào notes: chữ, nhân vật, bố cục, lỗi/lượt
-  sửa, đường dẫn JPEG/PNG đã xem. JPEG mới do wrapper xuất quality 95; không
-  mã hóa lại khi sao chép vào output, không nén lại PNG cũ, không xóa bản cần phục hồi trước khi bản mới gửi đủ. Không gọi tập thiếu ảnh/ảnh lỗi là hoàn thành.
-- Đưa ảnh/đường dẫn trực tiếp trong phiên Pi, không tự đăng/gửi dịch vụ khác.
-  Ngoại lệ tác vụ Telegram: bridge gửi album ảnh về đúng private chat chủ bot
-  sau khi kiểm tra manifest; `/files` gửi nguyên tệp JPEG/PNG đã chốt vì album có thể bị nén.
-  Không mở quyền gửi tới người nhận khác.
-
-Tác vụ Telegram dùng `telegram-<task-id>/` với cấu trúc trên và thêm
-`handoff/<run-id>/request.json`, `result.json` cho giao tiếp máy đọc. Session
-và tiến độ gửi nằm riêng trong `.telegram/`; xem [bridge](../bridge/README.md).
-
-Dữ liệu tập bị Git bỏ qua mặc định: sao lưu riêng khi chuyển máy. Git không
-khôi phục được file chưa commit. Chính sách dọn cả tập Telegram cũ đã hoàn
-tất xem [WORKFLOW](../WORKFLOW.md); tác vụ lỗi/unknown vẫn giữ dữ liệu. Bản
-đã dọn không rollback được, lịch sử Pi không tự mất theo output. Giữ nguyên tập
-thử `local-api-e2e-20261111-v1` làm hồ sơ lịch sử, không phải mẫu bắt buộc.
+Theo [quy trình](../docs/workflow.md), không có round hay bản sao kịch bản đang dùng. `T1`–`T35` là tập cũ đã đăng theo xác nhận của người dùng; `T2`–`T34` có bộ ảnh gốc đối chiếu được, còn `T1` và `T35` không có bộ thành phẩm xác minh được. `history/` chỉ là hồ sơ cũ, không dùng để gửi ảnh hoặc chạy lại lệnh. Các sai khác với bộ kiểm tra nguyên văn hiện tại được ghi trong hồ sơ cũ; khi mở tập để làm lại, áp dụng kiểm tra đầy đủ. Tập thử `local-api-e2e-20261111-v1` giữ nguyên, không tính mã và không giao qua bot.

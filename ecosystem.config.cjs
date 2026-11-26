@@ -4,7 +4,7 @@ module.exports = {
   apps: [{
     name: 'buddhism-telegram',
     cwd: __dirname,
-    script: join(__dirname, 'bridge/main.ts'),
+    script: join(__dirname, 'telegram/cli.mjs'),
     interpreter: process.execPath,
     node_args: [`--env-file=${join(__dirname, '.env')}`],
     exec_mode: 'fork',
@@ -14,12 +14,9 @@ module.exports = {
     restart_delay: 5000,
     min_uptime: 10000,
     max_restarts: 10,
-    // Allow an in-flight Telegram upload and Pi cancellation to finish.
-    kill_timeout: 180000,
+    kill_timeout: 10000,
     filter_env: ['TELEGRAM_'],
     env: { PATH: `${dirname(process.execPath)}:${process.env.PATH || '/usr/bin:/bin'}` },
-    out_file: join(__dirname, '.telegram/service.log'),
-    error_file: join(__dirname, '.telegram/service.log'),
     merge_logs: true,
     time: true,
   }],

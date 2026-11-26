@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { IMAGE_MODEL, IMAGE_OUTPUT_FORMAT, IMAGE_SIZE, PROMPT_TEMPLATE_VERSION } from './policy.mjs';
+import { IMAGE_MODEL, IMAGE_OUTPUT_FORMAT, IMAGE_SIZE } from './policy.mjs';
 
 export const sha256Bytes = bytes => createHash('sha256').update(bytes).digest('hex');
 
@@ -24,22 +24,17 @@ export function normalizeObjectsValue(rawObjects) {
   return null;
 }
 
-/**
- * Deterministic fingerprint for a slide's content, scene, role, source bounds,
- * mode/source hash (for verbatim), and resolved character snapshots.
- */
-export function computeSlideFingerprint(episode, slideIndex, resolvedChars = [], sourceSha256 = null) {
+// Bind the page and its characters; the episode lock binds the full source.
+export function computeSlideFingerprint(episode, slideIndex, resolvedChars = [], styleSha256) {
   const s = episode.slides[slideIndex];
   return sha256Canonical({
     mode: episode.mode ?? null,
-    source_sha256: episode.mode === 'verbatim' ? (sourceSha256 ?? null) : null,
+    style_ref_sha256: styleSha256,
     slide: {
       text: s.text,
       scene: s.scene ?? null,
       scene_type: s.scene_type ?? null,
       role: s.role ?? null,
-      source_start: s.source_start ?? null,
-      source_end: s.source_end ?? null,
       objects: normalizeObjectsValue(s.objects),
     },
     characters: resolvedChars.map(c => ({
@@ -48,17 +43,6 @@ export function computeSlideFingerprint(episode, slideIndex, resolvedChars = [],
       character_json_sha256: c.jsonSha256,
       reference_hashes: c.refInfos.map(r => r.sha256),
     })),
-  });
-}
-
-/**
- * Fingerprint of everything that feeds prompt generation for one slide.
- */
-export function computePromptInputFingerprint({ slideContentSha256, styleRefSha256 }) {
-  return sha256Canonical({
-    template_version: PROMPT_TEMPLATE_VERSION,
-    slide_content_sha256: slideContentSha256,
-    style_ref_sha256: styleRefSha256,
   });
 }
 
