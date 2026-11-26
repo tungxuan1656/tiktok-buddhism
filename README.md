@@ -1,6 +1,6 @@
 # Slide Phật giáo
 
-Mở agent trong repo và giao nội dung trực tiếp. Nếu agent không tự nạp `AGENTS.md`, yêu cầu nó đọc tệp đó trước. Agent nối tiếp công việc từ hồ sơ tập, không cần phiên agent trước hay Telegram. Telegram chỉ báo xong/lỗi và gửi ảnh gốc cùng nội dung theo yêu cầu của chủ bot.
+Mở agent trong repo và giao nội dung trực tiếp. Nếu agent không tự nạp `AGENTS.md`, yêu cầu nó đọc tệp đó trước. Agent nối tiếp công việc từ hồ sơ tập, không cần phiên agent trước hay Telegram. Telegram chỉ báo xong/lỗi và gửi bộ ảnh (album `photo`, tự chuyển sang tệp nếu ảnh vượt 10 MB) cùng nguyên văn nội dung trong `request` theo yêu cầu của chủ bot.
 
 - [Hướng dẫn agent](AGENTS.md) và [quy trình từng trang](docs/workflow.md).
 - [Các tập](episodes/README.md), [kho nhân vật](characters/README.md) và [mẫu JSON](templates/README.md).

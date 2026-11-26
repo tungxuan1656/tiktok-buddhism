@@ -1,0 +1,45 @@
+{
+  "id": "TYKHEO_02",
+  "name": "Tỳ kheo trẻ đồng hành (thiết kế minh họa)",
+  "aliases": [
+    "Tỳ kheo đồng hành",
+    "chư Tăng",
+    "vị Tỳ kheo trẻ"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam tu sĩ Nam Á khoảng 30–35 tuổi, da nâu ấm dịu, mặt hơi tròn đầy vừa phải, lông mày đen nét vừa, mắt nâu hiền, mũi vừa, môi mỉm nhẹ kín đáo; không râu/ria, không nếp nhăn tuổi già, tai bình thường.",
+    "hair": "Đầu cạo sạch trơn nhẵn, không tóc hoặc búi đỉnh đầu.",
+    "body": "Vóc dáng trung bình cân đối, người trưởng thành trẻ, chân trần.",
+    "clothing": "Y tăng màu nâu đất ấm vừa (tông ấm dịu hơn nâu đậm của TYKHEO_01), phủ kín cả hai vai với tay áo dài đến cổ tay và cổ áo lót màu vàng đất nhạt; nếp vải mềm dài gần cổ chân, không trang sức hay chuỗi hạt."
+  },
+  "keep": [
+    "Giữ gương mặt hơi tròn trẻ thanh hiền, da nâu ấm dịu, đầu cạo sạch, tai bình thường, không râu.",
+    "Giữ y tăng màu nâu đất ấm phủ hai vai, tay áo dài, cổ lót vàng đất nhạt và chân trần.",
+    "Chất liệu chì màu 2D nét mảnh, biểu cảm hiền hòa tiết chế trên nền giấy gần trắng."
+  ],
+  "can_vary": [
+    "Đứng, ngồi, quỳ hoặc bước đi và tư thế tay tự nhiên",
+    "Hướng nhìn và biểu cảm nhẹ phù hợp cảnh"
+  ],
+  "avoid": [
+    "Tóc xoăn búi đỉnh đầu hoặc dái tai dài như Đức Phật",
+    "Nếp nhăn tuổi trung niên/mặt dài hẹp như TYKHEO_01",
+    "Y hở vai phải như ANANDA_01 hoặc SARIPUTTA_01",
+    "Râu, trang sức, hào quang hoặc vật phụ không yêu cầu",
+    "Xác nhận diện mạo người thật/lịch sử hoặc gán làm người phạm lỗi"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "T37",
+    "draft": "drafts/character-TYKHEO_02-v1-a1",
+    "sha256": "9b500f8e898966f6657bbe09049e3281e63488e3189338644771ec57bfadc2a3",
+    "note": "Thiết kế minh họa quy ước tạo trong tập T37 làm vị Tỳ kheo đồng hành cùng TYKHEO_01 trong các cảnh số nhiều; ảnh phong cách gốc chỉ gợi nét chì và nền giấy, không khẳng định diện mạo lịch sử."
+  },
+  "review_note": "Đã mở JPEG sau nén (1080x1440): một vị Tỳ kheo trẻ đứng đủ thân chân trần, đầu cạo sạch, tai bình thường, mặt hơi tròn dịu không râu/nếp nhăn, hai tay đan nhẹ trước bụng tự nhiên, y nâu đất ấm phủ hai vai tay dài cổ lót vàng đất nhạt, nền giấy sạch không chữ. Chưa được người dùng duyệt."
+}

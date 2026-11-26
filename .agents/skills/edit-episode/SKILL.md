@@ -34,7 +34,7 @@ If the episode is blocked by `resolve_attempt`, resolve the blocked attempt per 
 
 ### Case A: Replace Faulty Slide Images Only (Script Unchanged)
 
-1. If the episode is `ready_for_review`, `approved`, or `published`, reopen and re-lock it so it can be updated in `locked` state:
+1. If the episode is `ready_for_review` or `published`, reopen and re-lock it so it can be updated in `locked` state:
    ```bash
    node scripts/episode-tools.mjs reopen episodes/Tn
    node scripts/episode-tools.mjs lock episodes/Tn
@@ -51,7 +51,7 @@ If the episode is blocked by `resolve_attempt`, resolve the blocked attempt per 
    ```bash
    node scripts/episode-tools.mjs reopen episodes/Tn
    ```
-2. Edit `episodes/Tn/artifact/episode.json` (and `source.txt` if `verbatim`) directly per `docs/editorial.md`. Never create a second script revision or copy.
+2. Edit `episodes/Tn/artifact/episode.json` (and `source.txt` if `verbatim`) directly per `docs/editorial.md`. If the edit changes the copyable content, tell the user before correcting it and update `request` directly. Never derive it from slides or create a second script revision or copy.
 3. Validate and re-lock:
    ```bash
    node scripts/episode-tools.mjs validate episodes/Tn
@@ -63,4 +63,4 @@ If the episode is blocked by `resolve_attempt`, resolve the blocked attempt per 
 
 1. Run `node scripts/episode-tools.mjs handoff episodes/Tn` and process each pending page until `handoff` returns `finalize`.
 2. Run `node scripts/episode-tools.mjs finalize episodes/Tn` and report the updated deliverable to the user.
-3. Never run `approve` or `publish` unless the user explicitly confirms the episode has been approved or published.
+3. Never run `publish` unless the user explicitly confirms the episode has been published.

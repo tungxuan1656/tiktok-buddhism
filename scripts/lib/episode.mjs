@@ -6,12 +6,21 @@ import { MAX_ATTEMPTS_PER_SLIDE, MAX_EPISODE_JSON_BYTES, MAX_IMAGE_BYTES } from 
 import { attemptIssue, blockingAttempt, episodeAttempts, readRejection, statIfPresent, verifiedDraft, visualAttempts } from './resume.mjs';
 import { imageMime, isSha256, readEpisodeJson, validateEpisodeData } from './schema.mjs';
 
+export class EpisodeStateError extends Error {
+  constructor(message, code = 'EPISODE_STATE') {
+    super(message);
+    this.code = code;
+  }
+}
+
 export const EPISODE_JSON = 'artifact/episode.json';
 export const isEpisodeCode = value => typeof value === 'string' && /^T[1-9][0-9]{0,8}$/.test(value);
 export const pad3 = n => String(n).padStart(3, '0');
 export const checkPath = n => `artifact/checks/${pad3(n)}.json`;
 export const imagePath = (n, extension = 'jpg') => `artifact/images/${pad3(n)}.${extension}`;
-const deliverableStatuses = ['ready_for_review', 'approved', 'published'];
+// Buttons sent with reconstructed text must not confirm delivery of the original request.
+export const bundleTag = key => Buffer.from(sha256Canonical(['request', key]), 'hex').subarray(0, 24).toString('base64url');
+const deliverableStatuses = ['ready_for_review', 'published'];
 const maxDeliverableStatusLength = Math.max(...deliverableStatuses.map(status => status.length));
 export const deliverableStatus = status => deliverableStatuses.includes(status);
 const validStatus = status => ['draft', 'locked'].includes(status) || deliverableStatus(status);
@@ -28,7 +37,9 @@ export const readEpisode = dir => readEpisodeJson(join(dir, EPISODE_JSON), dir);
 
 export function assertEpisodeIdentity(dir, ep) {
   if (!isEpisodeCode(ep?.code) || ep.code !== basename(resolve(dir)) || !validStatus(ep.status) ||
-    typeof ep.title !== 'string' || !ep.title.trim() || ep.title.length > 200) throw new Error('Invalid episode code, title, or status');
+    typeof ep.title !== 'string' || !ep.title.trim() || ep.title.length > 200) {
+    throw new EpisodeStateError('Invalid episode code, title, or status');
+  }
 }
 
 export function planHash(ep, validation) {
@@ -43,9 +54,9 @@ export async function loadValidated(dir, { character = false, requireLock = !cha
   const legacyVerbatimIssue = episode.status === 'published' && episode.legacy?.bundle === 'verified'
     ? episode.legacy.verbatim_issue : undefined;
   const validation = await validateEpisodeData(episode, dir, { includeCharacterSnapshots: !character, legacyVerbatimIssue });
-  if (!validation.ok) throw new Error(`Invalid episode: ${validation.issues.join('; ')}`);
+  if (!validation.ok) throw new EpisodeStateError(`Invalid episode: ${validation.issues.join('; ')}`);
   if (requireLock && (episode.status === 'draft' || episode.locked_sha256 !== planHash(episode, validation))) {
-    throw new Error('Script not locked or changed since lock; run handoff before proceeding');
+    throw new EpisodeStateError('Script not locked or changed since lock; run handoff before proceeding');
   }
   return { episode, validation };
 }
@@ -80,12 +91,12 @@ export async function checkedSlide(dir, slide, fingerprint) {
 
 export async function episodeBundle(dir) {
   const { episode, validation } = await loadValidated(dir);
-  if (!deliverableStatus(episode.status)) throw new Error('Episode is not complete');
-  if (await blockingEpisodeAttempt(dir)) throw new Error('Episode has a blocking attempt');
+  if (!deliverableStatus(episode.status)) throw new EpisodeStateError('Episode is not complete');
+  if (await blockingEpisodeAttempt(dir)) throw new EpisodeStateError('Episode has a blocking attempt');
   const files = [];
   for (const [index, fp] of validation.slideFingerprints.entries()) {
     const checked = await checkedSlide(dir, index + 1, fp);
-    if (!checked) throw new Error(`Slide ${index + 1} is not verified`);
+    if (!checked) throw new EpisodeStateError(`Slide ${index + 1} is not verified`);
     files.push(checked);
   }
   return { episode, files, key: sha256Canonical([episode.locked_sha256, ...files.map(f => f.sha256)]) };

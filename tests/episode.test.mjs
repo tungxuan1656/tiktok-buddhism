@@ -71,8 +71,14 @@ test('sequential draws reuse bytes, require an immediate visual check, and reope
   await exportSlide(dir, relative(dir, c), 'checked');
   const finalized = await changeEpisode(dir, 'finalize');
   assert.deepEqual(await changeEpisode(dir, 'finalize'), finalized);
+  await assert.rejects(changeEpisode(dir, 'approve'), /Unknown state transition/);
   const bundle = await episodeBundle(dir);
   assert.equal(bundle.files.length, 2);
+  await writeEpisode(dir, { ...await readEpisode(dir), status: 'approved' });
+  await assert.rejects(episodeBundle(dir), /Invalid episode/);
+  await writeEpisode(dir, { ...await readEpisode(dir), status: 'ready_for_review' });
+  assert.equal((await changeEpisode(dir, 'publish')).status, 'published');
+  assert.equal((await changeEpisode(dir, 'publish')).status, 'published');
   await changeEpisode(dir, 'reopen');
   await assert.rejects(episodeBundle(dir));
   const ep = await readEpisode(dir);

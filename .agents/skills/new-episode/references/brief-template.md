@@ -6,6 +6,6 @@
 - Characters (optional notes):
 - Style / tone notes (optional):
 
-## Content / Original Request
+## Content
 
-(Paste the scripture passage, text, or topic idea here)
+(Paste the content exactly as it should be sent back on Telegram. Keep production instructions in the fields above.)

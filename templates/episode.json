@@ -1,7 +1,7 @@
 {
   "code": "Tn",
   "title": "{Tên tập}",
-  "request": "{Yêu cầu nguyên gốc của người dùng}",
+  "request": "{Nội dung nguyên văn người dùng gửi để copy; cập nhật nếu đã báo sửa}",
   "mode": "original",
   "status": "draft",
   "source": null,

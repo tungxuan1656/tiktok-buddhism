@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { withEpisodeLock } from '../scripts/lib/lock.mjs';
 import { REPO_ROOT } from '../scripts/lib/policy.mjs';
-import { Telegram } from './api.mjs';
+import { Telegram, TelegramError } from './api.mjs';
 import { Bot, openDelivery } from './bot.mjs';
 
 export async function pollUpdates({ telegram, bot, delivery, signal, wait = sleep, log = console.warn }) {
@@ -27,13 +27,15 @@ export async function pollUpdates({ telegram, bot, delivery, signal, wait = slee
       }
       for (const update of updates) {
         if (signal.aborted) break;
+        let delay = 5;
         try {
           if (await bot.update(update, fetchedAt) !== false) continue;
-        } catch {
+        } catch (error) {
           if (!signal.aborted) log('Telegram command did not complete.');
+          if (error instanceof TelegramError && error.status === 429) delay = Math.max(delay, error.retryAfter);
         }
         // Do not let a later update acknowledge a command that is still pending.
-        if (!signal.aborted) await wait(5000, undefined, { signal }).catch(() => {});
+        if (!signal.aborted) await wait(delay * 1000, undefined, { signal }).catch(() => {});
         break;
       }
     } catch (error) {

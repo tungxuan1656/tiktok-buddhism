@@ -25,7 +25,7 @@ Use the template, the current style reference, and the source and character asse
 
 ## 2. Lock Down the Brief and Sources
 
-1. Capture the user's original request from the prompt after `/new-episode` or from the tagged file (see [brief-template.md](./references/brief-template.md) for a sample structure).
+1. Capture the user's content from the prompt after `/new-episode` or the content section of the tagged file (see [brief-template.md](./references/brief-template.md)). Save it verbatim in `request` for Telegram, excluding production instructions. If the content needs a correction, tell the user first, then replace it in `request` before locking. For scripture, correct only against the verified source.
 2. Classify the episode mode as `original`, `adaptation`, or `verbatim` per `docs/editorial.md`.
 3. **Check sutra / Buddha quote sources**: open the exact source being quoted, compare the wording, and record the file or URL and edition/locator where available. Search snippets and a matching canonical reference do not verify the wording of this edition. If the exact source or translation cannot be verified, **ask the user before drafting**. Never guess sources or alter wording/punctuation.
 4. If keeping verbatim wording readable exceeds the 35-slide maximum (including cover/closing), ask how to split across episodes rather than shrinking text or cutting quotes.
@@ -34,7 +34,7 @@ Use the template, the current style reference, and the source and character asse
 
 1. Allocate the next episode directory via script (never invent a code or print the episode code onto slides):
    ```bash
-   node scripts/episode-tools.mjs new "Episode Title" "Original user request"
+   node scripts/episode-tools.mjs new "Episode Title" "User-provided content"
    ```
 2. Search `characters/` for matching characters (read both JSON metadata and reference images; pick the highest version number with `user_approved`, otherwise `generated`; never use `retired`).
 3. Write all slides directly into `episodes/Tn/artifact/episode.json` following `templates/episode.json`; do not repeat the full script in chat. Break lines or slides at natural points for readability before locking, without changing source wording or punctuation:
@@ -83,4 +83,4 @@ node scripts/episode-tools.mjs lock episodes/Tn
    node scripts/episode-tools.mjs finalize episodes/Tn
    ```
 2. Report the episode directory path (`episodes/Tn`), title, and verified slide count (`ready_for_review`) to the user. If comparable log metrics are already available, use the T36 baseline in `docs/workflow.md`; do not delay handoff to collect metrics.
-3. Never call Telegram directly, publish posts, or mark `approved`/`published` without explicit user confirmation.
+3. Never call Telegram directly, publish posts, or mark `published` without explicit user confirmation.

@@ -2,7 +2,7 @@
 
 ## Soạn và chốt chữ
 
-1. Nhận đầu bài trong phiên agent. Với tập mới chạy `node scripts/episode-tools.mjs new "Tên tập" "Yêu cầu nguyên gốc"`. Script cấp mã từ thư mục hiện có; không tự đặt mã hoặc in mã lên slide.
+1. Nhận đầu bài trong phiên agent. Với tập mới chạy `node scripts/episode-tools.mjs new "Tên tập" "Nội dung người dùng gửi"`. `request` là bản để copy trên Telegram: giữ nguyên phần nội dung, không kèm lệnh hay chỉ dẫn sản xuất. Nếu cần sửa nội dung đó, báo người dùng trước rồi thay trực tiếp trong `request` theo [biên tập](editorial.md). Script cấp mã từ thư mục hiện có; không tự đặt mã hoặc in mã lên slide.
 2. Đối chiếu đúng bản trích theo [biên tập](editorial.md), rồi viết đủ trang trực tiếp vào `episodes/Tn/artifact/episode.json` theo [mẫu](../templates/README.md); không chép cả kịch bản ra chat. Chia dòng/trang ở chỗ tự nhiên để chữ dễ đọc mà không đổi lời nguồn. Dùng [mẫu phong cách hiện hành](visual-style.md) và chỉ mở ảnh/JSON [nhân vật](../characters/README.md) cần dùng hoặc cần đối chiếu để chọn mẫu, rồi ghim đúng snapshot. Không mở hàng loạt tập cũ hay đọc mã CLI nếu tài liệu và lệnh chuẩn đủ dùng.
 3. Chạy `node scripts/episode-tools.mjs validate episodes/Tn` rồi `node scripts/episode-tools.mjs lock episodes/Tn`. Kịch bản là bản duy nhất. Script khóa nội dung và dấu vân tay nguồn/tham chiếu. Không cần người dùng duyệt trước khi vẽ.
 
@@ -18,6 +18,6 @@ Khi có log sẵn và số liệu cùng cách tính, so nhanh với T36 để bi
 
 ## Sửa và trạng thái
 
-- Được yêu cầu sửa: chạy `reopen` với cùng thư mục, sửa kịch bản hoặc ghi lỗi cụ thể với ảnh cần sửa; khóa lại rồi theo handoff. Nội dung/trang và mẫu không đổi giữ nguyên biên bản. Bot không gửi bộ ảnh khi đang sửa.
-- `approve` hoặc `publish` chỉ chạy khi người dùng xác nhận đúng thành phẩm đã duyệt hoặc đã đăng. Ghi xác nhận trong notes; hoàn thành không đồng nghĩa đã duyệt hay đăng.
+- Được yêu cầu sửa: chạy `reopen` với cùng thư mục, sửa kịch bản hoặc ghi lỗi cụ thể với ảnh cần sửa; nếu sửa nội dung để copy, cập nhật `request`. Khóa lại rồi theo handoff. Nội dung/trang và mẫu không đổi giữ nguyên biên bản. Bot không gửi bộ ảnh khi đang sửa.
+- `publish` chỉ chạy khi người dùng bấm nút “Đã đăng bài” trên Telegram hoặc xác nhận đúng thành phẩm đã đăng trong phiên agent (ghi xác nhận vào `notes.md`); hoàn thành (`ready_for_review`) không đồng nghĩa đã đăng. Không còn trạng thái trung gian `approved`.
 - Lưu kịch bản, nguồn/ghi chú, mẫu đã ghim, ảnh chốt, biên bản và dữ liệu cần phục hồi. Không tạo revision/snapshot kịch bản thứ hai. Không xóa dữ liệu khi API hay chuyển giao chưa rõ; không tự dọn hồ sơ lịch sử. Git không theo dõi dữ liệu tập.

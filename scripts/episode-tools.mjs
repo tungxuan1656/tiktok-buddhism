@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readdir, rename, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { assertEpisodeIdentity, blockingEpisodeAttempt, deliverableStatus, episodeBundle, episodePages, imageBytes, isEpisodeCode, loadValidated, planHash, readEpisode, writeEpisode } from './lib/episode.mjs';
+import { assertEpisodeIdentity, blockingEpisodeAttempt, bundleTag, deliverableStatus, episodeBundle, episodePages, EpisodeStateError, imageBytes, isEpisodeCode, loadValidated, planHash, readEpisode, writeEpisode } from './lib/episode.mjs';
 import { withEpisodeLock } from './lib/lock.mjs';
 import { confineTargetPath, stripDotSlash, writeAtomic } from './lib/paths.mjs';
 import { REPO_ROOT } from './lib/policy.mjs';
@@ -31,10 +31,10 @@ export async function createEpisode(root, title, request) {
 
 async function ensureUnblocked(dir) {
   const attempt = await blockingEpisodeAttempt(dir);
-  if (attempt) throw new Error(`Episode blocked by ${attempt.path} (${imageError(attempt)}); run handoff`);
+  if (attempt) throw new EpisodeStateError(`Episode blocked by ${attempt.path} (${imageError(attempt)}); run handoff`);
 }
 
-export async function changeEpisode(dir, command) {
+export async function changeEpisode(dir, command, { lockTimeoutMs, expectedBundleTag } = {}) {
   return withEpisodeLock(dir, async () => {
     await ensureUnblocked(dir);
     const episode = await readEpisode(dir);
@@ -43,7 +43,7 @@ export async function changeEpisode(dir, command) {
       episode.status = 'draft';
       delete episode.locked_sha256;
     } else if (command === 'lock') {
-      if (episode.status !== 'draft') throw new Error('Reopen before changing a locked script');
+      if (episode.status !== 'draft') throw new EpisodeStateError('Reopen before changing a locked script');
       const { validation } = await loadValidated(dir, { requireLock: false });
       episode.locked_sha256 = planHash(episode, validation);
       episode.status = 'locked';
@@ -54,7 +54,7 @@ export async function changeEpisode(dir, command) {
       }
       const { validation } = await loadValidated(dir);
       const pages = await episodePages(dir, validation, await episodeAttempts(dir));
-      if (pages.some(p => p.action !== 'keep')) throw new Error('Missing verified images; run handoff');
+      if (pages.some(p => p.action !== 'keep')) throw new EpisodeStateError('Missing verified images; run handoff');
       const files = new Set(pages.map(p => p.file));
       await removeObsolete(dir, 'artifact/images', /^\d{3}\.(?:jpg|jpeg|png)$/, name => files.has(`artifact/images/${name}`));
       await removeObsolete(dir, 'artifact/checks', /^\d{3}\.json$/, name => {
@@ -62,13 +62,22 @@ export async function changeEpisode(dir, command) {
         return slide >= 1 && slide <= pages.length;
       });
       episode.status = 'ready_for_review';
-    } else if (command === 'approve' || command === 'publish') {
-      await episodeBundle(dir);
-      if (episode.status !== 'published') episode.status = command === 'approve' ? 'approved' : 'published';
+    } else if (command === 'publish') {
+      if (expectedBundleTag !== undefined) {
+        const bundle = await episodeBundle(dir);
+        if (bundleTag(bundle.key) !== expectedBundleTag) {
+          throw new EpisodeStateError('Episode bundle changed since button was sent', 'STALE_BUNDLE');
+        }
+        if (episode.status === 'published') return { code: episode.code, status: 'published' };
+        episode.status = 'published';
+      } else if (episode.status !== 'published') {
+        await episodeBundle(dir);
+        episode.status = 'published';
+      }
     } else throw new Error(`Unknown state transition: ${command}`);
     await writeEpisode(dir, episode);
     return { code: episode.code, status: episode.status };
-  });
+  }, lockTimeoutMs === undefined ? undefined : { timeoutMs: lockTimeoutMs });
 }
 
 async function removeObsolete(dir, path, pattern, keep) {
@@ -143,13 +152,13 @@ export async function rejectImage(dir, input, note) {
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [command, arg, ...rest] = process.argv.slice(2);
   try {
-    if (!arg) throw new Error('Usage: episode-tools.mjs new TITLE REQUEST | validate|lock|reopen|handoff|status|finalize|approve|publish DIR | prompt DIR N | reject DIR FILE --note NOTE');
+    if (!arg) throw new Error('Usage: episode-tools.mjs new TITLE REQUEST | validate|lock|reopen|handoff|status|finalize|publish DIR | prompt DIR N | reject DIR FILE --note NOTE');
     const dir = resolve(arg);
     let result;
     if (command === 'new' && rest.length === 1) result = await createEpisode(join(REPO_ROOT, 'episodes'), arg, rest[0]);
     else if (command === 'validate' && !rest.length) result = (await loadValidated(dir, { requireLock: false })).validation;
     else if (['handoff', 'status'].includes(command) && !rest.length) result = await episodeHandoff(dir);
-    else if (['lock', 'reopen', 'finalize', 'approve', 'publish'].includes(command) && !rest.length) result = await changeEpisode(dir, command);
+    else if (['lock', 'reopen', 'finalize', 'publish'].includes(command) && !rest.length) result = await changeEpisode(dir, command);
     else if (command === 'reject' && rest.length === 3 && rest[1] === '--note') result = await rejectImage(dir, rest[0], rest[2]);
     else if (command === 'prompt' && rest.length === 1) {
       const slide = Number(rest[0]);
