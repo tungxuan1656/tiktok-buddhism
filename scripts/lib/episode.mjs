@@ -3,7 +3,7 @@ import { basename, join, resolve } from 'node:path';
 import { sha256Bytes, sha256Canonical } from './fingerprint.mjs';
 import { confineRelativeFile, confineTargetPath, writeAtomic } from './paths.mjs';
 import { MAX_ATTEMPTS_PER_SLIDE, MAX_IMAGE_BYTES } from './policy.mjs';
-import { blockingAttempt, episodeAttempts, imageError, readRejection, statIfPresent } from './resume.mjs';
+import { attemptIssue, blockingAttempt, episodeAttempts, readRejection, statIfPresent, verifiedDraft, visualAttempts } from './resume.mjs';
 import { imageMime, isSha256, readEpisodeJson, validateEpisodeData } from './schema.mjs';
 
 export const EPISODE_JSON = 'artifact/episode.json';
@@ -52,17 +52,22 @@ export async function imageBytes(dir, file) {
   return { bytes, mime, sha256: sha256Bytes(bytes) };
 }
 
-export async function checkedSlide(dir, slide, fingerprint) {
+async function slideCheck(dir, slide, fingerprint) {
   const file = checkPath(slide);
   if (!await statIfPresent(join(dir, file))) return null;
   const check = await readEpisodeJson(join(dir, file), dir);
   if (check.slide_content_sha256 !== fingerprint || !allowedImagePath(check.image, slide) ||
     !isSha256(check.image_sha256) || (!isSha256(check.request_sha256) && check.legacy !== true) ||
-    check.visual_check?.passed !== true || typeof check.visual_check.note !== 'string' || !check.visual_check.note.trim() ||
-    await readRejection(dir, fingerprint, check.image_sha256)) return null;
-  if (!await statIfPresent(join(dir, check.image))) return null;
-  const image = await imageBytes(dir, check.image);
-  return image.sha256 === check.image_sha256 ? { file: check.image, sha256: image.sha256 } : null;
+    check.visual_check?.passed !== true || typeof check.visual_check.note !== 'string' || !check.visual_check.note.trim()) return null;
+  const note = await readRejection(dir, fingerprint, check.image_sha256);
+  if (note) return { file: check.image, note };
+  const image = await imageBytes(dir, check.image).catch(() => null);
+  return image?.sha256 === check.image_sha256 ? { file: check.image, sha256: image.sha256 } : null;
+}
+
+export async function checkedSlide(dir, slide, fingerprint) {
+  const check = await slideCheck(dir, slide, fingerprint);
+  return check?.sha256 ? check : null;
 }
 
 export async function episodeBundle(dir) {
@@ -80,28 +85,24 @@ export async function episodeBundle(dir) {
 
 export async function blockingEpisodeAttempt(dir) {
   const attempt = blockingAttempt(await episodeAttempts(dir));
-  if (!attempt) return null;
-  return { path: attempt.path, state: attempt.state, slide: attempt.plan.slide ?? null,
-    character: attempt.plan.character ? attempt.plan.target : null,
-    code: imageError(attempt), raw_recoverable: isSha256(attempt.response_sha256) && ['received', 'normalize_failed'].includes(attempt.state) };
+  return attempt ? attemptIssue(dir, attempt) : null;
 }
 
 export async function pageState(dir, slide, fp, attempts) {
-  const checked = await checkedSlide(dir, slide, fp);
-  if (checked) return { slide, action: 'keep', ...checked };
+  const checked = await slideCheck(dir, slide, fp);
+  if (checked?.sha256) return { slide, action: 'keep', ...checked };
   const relevant = attempts.filter(a => a.plan.slide === slide && a.slide_content_sha256 === fp);
   let rejected;
   for (const a of relevant.toReversed()) {
-    if (a.state !== 'succeeded' || !isSha256(a.output?.sha256)) continue;
+    if (a.state !== 'succeeded') continue;
     const file = `${a.path}/image.jpg`;
-    const note = await readRejection(dir, fp, a.output.sha256);
+    const note = await readRejection(dir, fp, a.output?.sha256);
     if (note) { rejected ??= { file, note }; continue; }
-    if (await statIfPresent(join(dir, file)) && (await imageBytes(dir, file)).sha256 === a.output.sha256) {
-      return { slide, action: 'review', file };
-    }
-    throw new Error(`Verified API draft missing or changed: ${file}; inspect the saved attempt before proceeding`);
+    if (await verifiedDraft(dir, a)) return { slide, action: 'review', file };
+    return { slide, action: 'resolve_attempt', blocked: await attemptIssue(dir, a) };
   }
-  if (relevant.length >= MAX_ATTEMPTS_PER_SLIDE) return { slide, action: 'attempt_limit', rejected };
+  rejected ??= checked?.note ? checked : undefined;
+  if (visualAttempts(relevant) >= MAX_ATTEMPTS_PER_SLIDE) return { slide, action: 'attempt_limit', rejected };
   const count = attempts.filter(a => a.plan.slide === slide).length;
   return { slide, action: rejected ? 'repair' : 'draw', rejected, attempt: `${pad3(slide)}-a${count + 1}` };
 }

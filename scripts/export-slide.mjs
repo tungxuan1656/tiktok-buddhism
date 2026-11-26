@@ -1,14 +1,15 @@
-import { link, mkdir, mkdtemp, rename, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { checkPath, checkedSlide, episodePages, imagePath, loadValidated } from './lib/episode.mjs';
 import { withEpisodeLock } from './lib/lock.mjs';
-import { confineRelativeFile, confineTargetPath, writeAtomic } from './lib/paths.mjs';
+import { confineRelativeFile, confineTargetPath, stripDotSlash, writeAtomic } from './lib/paths.mjs';
 import { blockingAttempt, episodeAttempts, readRejection } from './lib/resume.mjs';
 import { readImageInfo } from './lib/schema.mjs';
 
 export async function exportSlide(dir, file, note) {
   if (typeof note !== 'string' || !note.trim() || Buffer.byteLength(note) > 4000) throw new Error('Provide the visual check note (up to 4000 bytes)');
+  file = stripDotSlash(file);
   return withEpisodeLock(dir, async () => {
     const { episode, validation } = await loadValidated(dir);
     const attempts = await episodeAttempts(dir);
@@ -18,7 +19,7 @@ export async function exportSlide(dir, file, note) {
         slide < 1 || slide > episode.slides.length || blockingAttempt(attempts)) throw new Error('Expected a successful slide draft in an unblocked episode');
     const fp = validation.slideFingerprints[slide - 1];
     const input = await confineRelativeFile(dir, file);
-    const info = await readImageInfo(input.real, { requireNormalized1080: true });
+    const info = await readImageInfo(input.real, { requireNormalized1080: true, includeBytes: true });
     if (info.mime !== 'image/jpeg' || info.sha256 !== attempt.output?.sha256 || fp !== attempt.slide_content_sha256 ||
         await readRejection(dir, fp, info.sha256)) throw new Error('Draft changed, is stale, or was rejected');
     const existing = await checkedSlide(dir, slide, fp);
@@ -33,7 +34,7 @@ export async function exportSlide(dir, file, note) {
     const staging = await mkdtemp(join(dirname(output), '.export-'));
     try {
       const temp = join(staging, 'image.jpg');
-      await link(input.real, temp);
+      await writeFile(temp, info.buffer);
       await rename(temp, output);
       await writeAtomic(check, `${JSON.stringify({ image, image_sha256: info.sha256, slide_content_sha256: fp,
         request_sha256: attempt.request_sha256, visual_check: { passed: true, note: note.trim() } }, null, 2)}\n`);

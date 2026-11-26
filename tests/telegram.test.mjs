@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import test from 'node:test';
@@ -8,8 +8,10 @@ import { createEpisode, changeEpisode } from '../scripts/episode-tools.mjs';
 import { draw } from '../scripts/draw-image.mjs';
 import { exportSlide } from '../scripts/export-slide.mjs';
 import { readEpisode, writeEpisode } from '../scripts/lib/episode.mjs';
+import { withEpisodeLock } from '../scripts/lib/lock.mjs';
 import { Telegram } from '../telegram/api.mjs';
 import { Bot, openDelivery } from '../telegram/bot.mjs';
+import { pollUpdates } from '../telegram/main.mjs';
 
 async function setup(t, title, texts) {
   const root = await mkdtemp(join(tmpdir(), 'buddhism-bot-'));
@@ -31,10 +33,13 @@ async function fill(dir, total) {
   await changeEpisode(dir, 'finalize');
   return completed;
 }
-function mock(root, request) {
+const ok = () => Response.json({ ok: true, result: { message_id: 1 } });
+const reject = (status, delay) => Response.json({ ok: false, parameters: { retry_after: delay } }, { status });
+
+function mock(root, request, options) {
   const messages = [];
   const docs = [];
-  const telegram = new Telegram('1:fake', 100, { request: async (url, { body }) => {
+  const telegram = new Telegram('1:fake', 100, { wait: async () => {}, ...options, request: async (url, { body }) => {
     const method = url.split('/').at(-1);
     if (method === 'sendMessage') {
       const data = JSON.parse(body);
@@ -44,7 +49,7 @@ function mock(root, request) {
       assert.equal(body.get('chat_id'), '100');
       docs.push(body.get('document'));
     } else assert.fail(`Unexpected Telegram method ${method}`);
-    return request ? request(method) : Response.json({ ok: true, result: { message_id: 1 } });
+    return request ? request(method, docs.at(-1)?.name) : ok();
   } });
   const delivery = openDelivery(join(root, 'test.sqlite'));
   return { messages, docs, delivery, bot: new Bot({ root, telegram, delivery, log: () => {} }) };
@@ -122,4 +127,135 @@ test('an unconfirmed document stops the send and does not replay the same update
   t.after(restarted.delivery.close);
   await restarted.bot.update(update(123, '/get T1'));
   assert.equal(restarted.docs.length, 0);
+
+  const partial = mock(root, method => method === 'sendMessage' ? reject(429, 120) : Promise.reject(new Error('timeout')));
+  t.after(partial.delivery.close);
+  await partial.bot.update(update(124, '/get T1'));
+  assert.equal(partial.docs.length, 1);
+  assert.equal(partial.messages.length, 1);
+});
+
+test('a definitive 429 retries only the same document, and long waits stop the bundle', async t => {
+  const { root, dir } = await setup(t, 'Rate limit', ['First', 'Second']);
+  await fill(dir, 2);
+  t.mock.timers.enable({ apis: ['Date'], now: 1000 });
+  const waits = [];
+  const wait = async ms => { waits.push(ms); t.mock.timers.tick(ms); };
+  let first = true;
+  const fixture = mock(root, (_method, name) => {
+    if (name === 'T1-002.jpg' && first) { first = false; return reject(429, 2); }
+    return ok();
+  }, { wait });
+  t.after(fixture.delivery.close);
+  await fixture.bot.update(update(1, '/get T1'));
+  assert.deepEqual(fixture.docs.map(d => d.name), ['T1-001.jpg', 'T1-002.jpg', 'T1-002.jpg', 'T1-noi-dung.txt']);
+  assert.deepEqual(waits.splice(0), [1000, 2000, 1000]);
+
+  const repeated = mock(root, (method, name) => method === 'sendDocument' && name === 'T1-002.jpg' ? reject(429, 2) : ok(), { wait });
+  t.after(repeated.delivery.close);
+  await repeated.bot.update(update(2, '/get T1'));
+  assert.deepEqual(repeated.docs.map(d => d.name), ['T1-001.jpg', 'T1-002.jpg', 'T1-002.jpg']);
+  assert.match(repeated.messages[0], /Telegram xác nhận 1\/3 tệp/);
+  assert.deepEqual(waits.splice(0), [1000, 2000, 2000]);
+
+  const long = mock(root, (_method, name) => name === 'T1-002.jpg' ? reject(429, 120) : ok(), { wait });
+  t.after(long.delivery.close);
+  await long.bot.update(update(3, '/get T1'));
+  assert.deepEqual(long.docs.map(d => d.name), ['T1-001.jpg', 'T1-002.jpg']);
+  assert.deepEqual(long.messages, []);
+  assert.deepEqual(waits, [1000]);
+});
+
+test('a definitive 429 defers the notice across bot restarts', async t => {
+  const { root, dir } = await setup(t, 'Rate-limited notice', ['First']);
+  await fill(dir, 1);
+  t.mock.timers.enable({ apis: ['Date'], now: 1000 });
+  const limited = mock(root, () => reject(429, 60));
+  try { await limited.bot.scan(); }
+  finally { limited.delivery.close(); }
+  assert.equal(limited.messages.length, 1);
+
+  const restarted = mock(root);
+  t.after(restarted.delivery.close);
+  t.mock.timers.tick(59_999);
+  await restarted.bot.scan();
+  assert.deepEqual(restarted.messages, []);
+  t.mock.timers.tick(1);
+  await restarted.bot.scan();
+  await restarted.bot.scan();
+  assert.deepEqual(restarted.messages, ['T1: "Rate-limited notice" đã xong.']);
+});
+
+test('notices survive a definitive 403 and a shutdown before dispatch', async t => {
+  const { root, dir } = await setup(t, 'Notice', ['First']);
+  await fill(dir, 1);
+  t.mock.timers.enable({ apis: ['Date'], now: 1000 });
+  const beforeStart = mock(root, () => reject(403));
+  await beforeStart.bot.scan();
+  beforeStart.delivery.close();
+  assert.equal(beforeStart.messages.length, 1);
+  const controller = new AbortController();
+  const shuttingDown = mock(root, undefined, { signal: controller.signal, wait: async () => {
+    controller.abort();
+    throw new DOMException('shutdown', 'AbortError');
+  } });
+  await shuttingDown.bot.scan();
+  assert.equal(shuttingDown.messages.length, 0);
+  t.mock.timers.tick(60_000);
+  await shuttingDown.bot.update(update(1, '/start'));
+  await shuttingDown.bot.scan();
+  shuttingDown.delivery.close();
+  assert.equal(shuttingDown.messages.length, 1);
+  assert.equal(controller.signal.aborted, true);
+
+  const restarted = mock(root);
+  t.after(restarted.delivery.close);
+  await restarted.bot.scan();
+  await restarted.bot.scan();
+  assert.deepEqual(restarted.messages, ['T1: "Notice" đã xong.']);
+});
+
+test('in-flight and unknown image attempts explain that the outcome is uncertain', async t => {
+  const { root, dir } = await setup(t, 'Uncertain', ['One page.']);
+  await assert.rejects(draw({ episodeDir: dir, slide: 1, request: () => new Response('private', { status: 500 }) }));
+  const { bot, messages, delivery } = mock(root);
+  t.after(delivery.close);
+  await bot.scan();
+  await writeFile(join(dir, 'drafts/001-a1/status.json'), JSON.stringify({ state: 'in_flight' }));
+  await bot.scan();
+  assert.equal(messages.length, 2);
+  assert.match(messages[0], /IMG_HTTP_500, chưa rõ API đã tạo ảnh hay chưa/);
+  assert.match(messages[1], /IMG_UNKNOWN, chưa rõ API đã tạo ảnh hay chưa/);
+});
+
+test('a long episode list splits on rows and a locked episode is not sent', async t => {
+  const { root, dir } = await setup(t, 'Locked', ['Page']);
+  const title = 'L'.repeat(199);
+  for (let n = 2; n <= 21; n++) await createEpisode(root, title, 'Request');
+  const { bot, messages, docs, delivery } = mock(root);
+  t.after(delivery.close);
+  await bot.update(update(1, '/episodes'));
+  assert.equal(messages.length, 2);
+  assert.ok(messages.every(s => s.length < 3900));
+  assert.deepEqual([...messages.join('\n').matchAll(/^T(\d+):/gm)].map(m => Number(m[1])), Array.from({ length: 21 }, (_, i) => 21 - i));
+  await withEpisodeLock(dir, () => bot.update(update(2, '/get T1')));
+  assert.match(messages.at(-1), /đang được xử lý/);
+  assert.equal(docs.length, 0);
+});
+
+test('polling honors a reported delay and stops processing the batch on shutdown', async () => {
+  const controller = new AbortController();
+  const waits = [];
+  const events = [];
+  const telegram = new Telegram('1:fake', 100, { signal: controller.signal, request: async (url, { body }) => {
+    assert.equal(url.split('/').at(-1), 'getUpdates');
+    assert.deepEqual(JSON.parse(body), { offset: 23, timeout: 15, allowed_updates: ['message'] });
+    events.push('poll');
+    return waits.length ? Response.json({ ok: true, result: [23, 24] }) : reject(429, 6);
+  } });
+  const bot = { scan: async () => events.push('scan'), update: async id => { events.push(id); controller.abort(); } };
+  await pollUpdates({ telegram, bot, delivery: { offset: () => 23 }, signal: controller.signal,
+    wait: async ms => { waits.push(ms); }, log: () => {} });
+  assert.deepEqual(waits, [6000]);
+  assert.deepEqual(events, ['scan', 'poll', 'scan', 'poll', 23]);
 });

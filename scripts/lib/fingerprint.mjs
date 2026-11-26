@@ -25,10 +25,11 @@ export function normalizeObjectsValue(rawObjects) {
 }
 
 // Bind the page and its characters; the episode lock binds the full source.
-export function computeSlideFingerprint(episode, slideIndex, resolvedChars = []) {
+export function computeSlideFingerprint(episode, slideIndex, resolvedChars = [], styleSha256) {
   const s = episode.slides[slideIndex];
   return sha256Canonical({
     mode: episode.mode ?? null,
+    style_ref_sha256: styleSha256,
     slide: {
       text: s.text,
       scene: s.scene ?? null,

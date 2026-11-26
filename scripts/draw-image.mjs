@@ -4,17 +4,17 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { computeRequestFingerprint, sha256Bytes, sha256Canonical } from './lib/fingerprint.mjs';
-import { EPISODE_JSON, episodePages, imageBytes, loadValidated } from './lib/episode.mjs';
+import { EPISODE_JSON, episodePages, loadValidated } from './lib/episode.mjs';
 import { withEpisodeLock } from './lib/lock.mjs';
-import { blockingAttempt, episodeAttempts, readRejection, statIfPresent } from './lib/resume.mjs';
-import { confineExistingPath, confineRelativeFile, confineTargetPath, isSafeId, isSafeVersion, writeAtomic } from './lib/paths.mjs';
+import { blockingAttempt, episodeAttempts, readRejection, statIfPresent, verifiedDraft, verifiedRawResponse, visualAttempts } from './lib/resume.mjs';
+import { confineExistingPath, confineTargetPath, isSafeId, isSafeVersion, stripDotSlash, writeAtomic } from './lib/paths.mjs';
 import { slidePrompt } from './lib/prompt.mjs';
 import {
   IMAGE_ENDPOINT, IMAGE_MODEL, IMAGE_OUTPUT_FORMAT, IMAGE_SIZE, MAX_ATTEMPTS_PER_SLIDE,
   MAX_EPISODE_JSON_BYTES, MAX_IMAGE_BYTES, MAX_PROMPT_BYTES, MAX_REFS, MAX_TOTAL_REF_BYTES,
   OUTPUT_HEIGHT, OUTPUT_QUALITY, OUTPUT_SAMPLING, OUTPUT_WIDTH, REPO_ROOT,
 } from './lib/policy.mjs';
-import { isSha256, readImageInfo } from './lib/schema.mjs';
+import { readEpisodeJson, readImageInfo } from './lib/schema.mjs';
 
 const exec = promisify(execFile);
 const saveStatus = (dir, record) => writeAtomic(join(dir, 'status.json'), `${JSON.stringify(record, null, 2)}\n`, 0o600);
@@ -64,11 +64,10 @@ async function characterJob(dir, episode, target, promptFile, references, attemp
   const previous = attempts.filter(a => a.plan.target === target);
   for (const a of previous.toReversed()) {
     if (a.state !== 'succeeded' || await readRejection(dir, fp, a.output?.sha256)) continue;
-    const file = `${a.path}/image.jpg`;
-    if ((await imageBytes(dir, file)).sha256 !== a.output?.sha256) throw new Error('Character draft changed; inspect the saved attempt');
-    return { reuse: join(dir, file) };
+    if (!await verifiedDraft(dir, a)) throw new Error(`Character draft missing or changed: ${a.path}; run handoff`);
+    return { reuse: join(dir, a.path, 'image.jpg') };
   }
-  if (previous.length >= MAX_ATTEMPTS_PER_SLIDE) throw new Error('Character attempt limit reached');
+  if (visualAttempts(previous) >= MAX_ATTEMPTS_PER_SLIDE) throw new Error('Character attempt limit reached');
   const input = await confineExistingPath([dir], promptFile);
   if (input.stat.size > MAX_PROMPT_BYTES) throw new Error('Prompt too large');
   return { prompt: await readFile(input.real, 'utf8'), references, fp, name: `character-${id}-${version}-a${previous.length + 1}` };
@@ -96,12 +95,14 @@ export async function draw({ episodeDir, slide, target, promptFile, references =
       if (!next || next.slide !== slide) throw new Error(`Only the first unfinished slide may be drawn (next: ${next?.slide ?? 'none'})`);
       if (next.action === 'review') return join(dir, next.file);
       if (next.action === 'attempt_limit') throw new Error(`Attempt limit reached for slide ${slide}`);
+      if (next.action === 'resolve_attempt') throw new Error(`Draft missing or changed: ${next.blocked.path}; run handoff`);
       job = { ...slidePrompt(dir, episode, validation, slide, next.rejected?.note),
         fp: validation.slideFingerprints[slide - 1], name: next.attempt };
     }
     if (!job.prompt.trim() || Buffer.byteLength(job.prompt) > MAX_PROMPT_BYTES) throw new Error('Invalid prompt size');
     const { refs, images } = await readAndCheckReferences(job.references, dir);
     if (!character) {
+      if (validation.styleReference && refs[0]?.sha256 !== validation.styleReference.sha256) throw new Error('Pinned style reference changed');
       const required = validation.resolvedCharsBySlide[slide - 1].flatMap(c => c.refInfos.map(r => r.sha256));
       if (required.some((hash, i) => hash !== refs[i + 1]?.sha256)) throw new Error('Pinned character references changed');
     }
@@ -127,15 +128,21 @@ export async function draw({ episodeDir, slide, target, promptFile, references =
   }, { timeoutMs: 0 });
 }
 
-async function normalizeImage(raw, dir) {
+async function normalizeImage(raw, dir, expectedHash) {
   const source = await readImageInfo(raw);
-  const output = join(dir, 'image.jpg');
-  await exec('magick', [raw, '-auto-orient', '-colorspace', 'sRGB', '-background', 'white',
-    '-alpha', 'remove', '-alpha', 'off', '-resize', `${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}`, '-gravity', 'center', '-extent', `${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}`,
-    '-strip', '-sampling-factor', OUTPUT_SAMPLING, '-quality', String(OUTPUT_QUALITY), output], { timeout: 60_000 });
-  const final = await readImageInfo(output, { requireNormalized1080: true });
-  if (final.mime !== 'image/jpeg') throw new Error('Invalid normalized output');
-  return { source, output: { file: 'image.jpg', ...final, quality: OUTPUT_QUALITY, sampling: OUTPUT_SAMPLING } };
+  if (source.sha256 !== expectedHash) throw new Error('Recorded response changed');
+  const staging = await mkdtemp(join(dir, '.normalize-'));
+  try {
+    const output = join(staging, 'image.jpg');
+    await exec('magick', [raw, '-auto-orient', '-colorspace', 'sRGB', '-background', 'white',
+      '-alpha', 'remove', '-alpha', 'off', '-resize', `${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}`, '-gravity', 'center', '-extent', `${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}`,
+      '-strip', '-sampling-factor', OUTPUT_SAMPLING, '-quality', String(OUTPUT_QUALITY), output], { timeout: 60_000 });
+    const final = await readImageInfo(output, { requireNormalized1080: true });
+    if (final.mime !== 'image/jpeg') throw new Error('Invalid normalized output');
+    if (sha256Bytes(await readFile(raw)) !== expectedHash) throw new Error('Recorded response changed');
+    await rename(output, join(dir, 'image.jpg'));
+    return { source, output: { file: 'image.jpg', ...final, quality: OUTPUT_QUALITY, sampling: OUTPUT_SAMPLING } };
+  } finally { await rm(staging, { recursive: true, force: true }); }
 }
 
 async function executeRequest({ confinedWork, prompt, images, request }) {
@@ -170,7 +177,7 @@ async function executeRequest({ confinedWork, prompt, images, request }) {
     }
     await writeFile(raw, bytes, { flag: 'wx', mode: 0o600 });
     if (!response.ok) throw new Error('Image API did not succeed');
-    const image = await normalizeImage(raw, confinedWork);
+    const image = await normalizeImage(raw, confinedWork, responseSha256);
     await save({ state: 'succeeded', http_status: httpStatus, response_sha256: responseSha256, ...image });
     return join(confinedWork, image.output.file);
   } catch (error) {
@@ -184,29 +191,27 @@ async function executeRequest({ confinedWork, prompt, images, request }) {
 export async function recoverAttempt(episodeDir, name, { note } = {}) {
   const dir = resolve(episodeDir);
   return withEpisodeLock(dir, async () => {
-    const attempt = blockingAttempt(await episodeAttempts(dir));
-    if (!attempt || attempt.name !== name) throw new Error('Select the blocking attempt from handoff');
+    const attempts = await episodeAttempts(dir);
+    const selected = stripDotSlash(name);
+    const attempt = attempts.find(a => a.name === selected || a.path === selected);
+    const blocked = blockingAttempt(attempts);
+    const damaged = attempt?.state === 'succeeded' && !await verifiedDraft(dir, attempt);
+    if (!attempt || (blocked ? attempt !== blocked : !damaged)) throw new Error('Select the blocking or damaged attempt from handoff');
     const work = join(dir, attempt.path);
-    const status = JSON.parse(await readFile(join(work, 'status.json'), 'utf8'));
+    const status = await readEpisodeJson(join(work, 'status.json'), dir);
     if (note !== undefined) {
-      if (typeof note !== 'string' || !note.trim()) throw new Error('Reconciliation requires an explanation');
+      if (typeof note !== 'string' || !note.trim() || Buffer.byteLength(note) > 4000) throw new Error('Reconciliation requires an explanation (up to 4000 bytes)');
       await saveStatus(work, { ...status, previous_state: status.state, state: 'reconciled_failed', reconcile_note: note.trim() });
       return { reconciled: attempt.path };
     }
-    if (!['received', 'normalize_failed'].includes(attempt.state) || !isSha256(attempt.response_sha256)) {
-      throw new Error('No verified response to recover; reconcile with the server before resending');
-    }
-    const raw = await confineRelativeFile(dir, `${attempt.path}/response.bin`);
-    if (raw.stat.size > MAX_IMAGE_BYTES || sha256Bytes(await readFile(raw.real)) !== attempt.response_sha256) {
-      throw new Error('Recorded response SHA-256 mismatch');
-    }
+    const raw = await verifiedRawResponse(dir, attempt);
+    if (!raw) throw new Error('No verified response to recover; reconcile with the server before resending');
     try {
-      const result = await normalizeImage(raw.real, work);
-      if (result.source.sha256 !== attempt.response_sha256) throw new Error('Recorded response changed');
+      const result = await normalizeImage(raw, work, attempt.response_sha256);
       await saveStatus(work, { ...status, ...result, state: 'succeeded' });
       return join(work, result.output.file);
     } catch {
-      await saveStatus(work, { ...status, state: 'normalize_failed' });
+      if (!damaged) await saveStatus(work, { ...status, state: 'normalize_failed' });
       throw new Error('Local image normalization failed; no API call made');
     }
   }, { timeoutMs: 0 });

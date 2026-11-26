@@ -3,9 +3,9 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertEpisodeIdentity, blockingEpisodeAttempt, deliverableStatus, episodeBundle, episodePages, imageBytes, isEpisodeCode, loadValidated, planHash, readEpisode, writeEpisode } from './lib/episode.mjs';
 import { withEpisodeLock } from './lib/lock.mjs';
-import { confineTargetPath, writeAtomic } from './lib/paths.mjs';
+import { confineTargetPath, stripDotSlash, writeAtomic } from './lib/paths.mjs';
 import { REPO_ROOT } from './lib/policy.mjs';
-import { episodeAttempts, readRejection, rejectionPath, statIfPresent } from './lib/resume.mjs';
+import { attemptIssue, episodeAttempts, readRejection, rejectionPath, statIfPresent, verifiedDraft } from './lib/resume.mjs';
 import { slidePrompt } from './lib/prompt.mjs';
 
 export async function createEpisode(root, title, request) {
@@ -48,11 +48,19 @@ export async function changeEpisode(dir, command) {
       episode.locked_sha256 = planHash(episode, validation);
       episode.status = 'locked';
     } else if (command === 'finalize') {
-      if (episode.status !== 'locked') return episodeBundle(dir);
+      if (episode.status !== 'locked') {
+        await episodeBundle(dir);
+        return { code: episode.code, status: episode.status };
+      }
       const { validation } = await loadValidated(dir);
       const pages = await episodePages(dir, validation, await episodeAttempts(dir));
       if (pages.some(p => p.action !== 'keep')) throw new Error('Missing verified images; run handoff');
-      await removeObsoleteImages(dir, pages.map(p => p.file));
+      const files = new Set(pages.map(p => p.file));
+      await removeObsolete(dir, 'artifact/images', /^\d{3}\.(?:jpg|jpeg|png)$/, name => files.has(`artifact/images/${name}`));
+      await removeObsolete(dir, 'artifact/checks', /^\d{3}\.json$/, name => {
+        const slide = Number(name.slice(0, 3));
+        return slide >= 1 && slide <= pages.length;
+      });
       episode.status = 'ready_for_review';
     } else if (command === 'approve' || command === 'publish') {
       await episodeBundle(dir);
@@ -63,13 +71,10 @@ export async function changeEpisode(dir, command) {
   });
 }
 
-async function removeObsoleteImages(dir, files) {
-  const keep = new Set(files);
-  const folder = await confineTargetPath(dir, 'artifact/images');
+async function removeObsolete(dir, path, pattern, keep) {
+  const folder = await confineTargetPath(dir, path);
   for (const entry of await readdir(folder, { withFileTypes: true })) {
-    if (!entry.isFile() || !/^\d{3}\.(?:jpg|jpeg|png)$/.test(entry.name)) continue;
-    const path = `artifact/images/${entry.name}`;
-    if (!keep.has(path)) await rm(join(dir, path));
+    if (entry.isFile() && pattern.test(entry.name) && !keep(entry.name)) await rm(join(folder, entry.name));
   }
 }
 
@@ -91,6 +96,7 @@ export async function episodeHandoff(dir) {
         const [id, version] = a.plan.target.split('/');
         if (!await statIfPresent(join(dir, 'references', id, version, 'character.json')) &&
             !await readRejection(dir, a.slide_content_sha256, a.output?.sha256)) {
+          if (!await verifiedDraft(dir, a)) return { ...base, next: 'resolve_attempt', blocked: await attemptIssue(dir, a) };
           character_drafts.push({ target: a.plan.target, file: `${a.path}/image.jpg` });
         }
       }
@@ -100,12 +106,13 @@ export async function episodeHandoff(dir) {
     const pages = await episodePages(dir, validation, attempts);
     const next = pages.find(p => p.action !== 'keep');
     return { ...base, kept: pages.filter(p => p.action === 'keep').map(p => p.slide), total: pages.length,
-      next: next?.action ?? 'finalize', page: next };
+      next: next?.action ?? 'finalize', page: next, blocked: next?.blocked };
   }, { timeoutMs: 0 });
 }
 
 export async function rejectImage(dir, file, note) {
   if (typeof note !== 'string' || !note.trim() || Buffer.byteLength(note) > 4000) throw new Error('Describe the visual fault (up to 4000 bytes)');
+  file = stripDotSlash(file);
   return withEpisodeLock(dir, async () => {
     await ensureUnblocked(dir);
     const episode = await readEpisode(dir);

@@ -98,10 +98,14 @@ export class Bot {
           sent++;
         }
         await this.telegram.document({ name: `${code}-noi-dung.txt`, mime: 'text/plain; charset=utf-8', bytes: encoder.encode(content(bundle.episode)) });
+        sent++;
       }, { timeoutMs: 0 });
     } catch (error) {
-      if (total) await this.telegram.say(`${code}: Telegram xác nhận ${sent}/${total} tệp. Hãy kiểm tra chat trước khi dùng lại /get ${code}.`);
-      else if (error.message.startsWith('Timed out waiting for episode lock')) await this.telegram.say(`${code} đang được xử lý; thử lại khi tập đã xong.`);
+      if (total) {
+        if (this.telegram.signal?.aborted || error.status === 403) return;
+        try { await this.telegram.say(`${code}: Telegram xác nhận ${sent}/${total} tệp. Hãy kiểm tra chat trước khi dùng lại /get ${code}.`); }
+        catch { this.log('Telegram partial delivery status not confirmed.'); }
+      } else if (error.message.startsWith('Timed out waiting for episode lock')) await this.telegram.say(`${code} đang được xử lý; thử lại khi tập đã xong.`);
       else throw error;
     }
   }
@@ -109,13 +113,17 @@ export class Bot {
   async notice(key, message) {
     const status = this.delivery.noticeStatus(key);
     if (status !== 'due') return status === 'settled';
+    if (this.telegram.signal?.aborted) return false;
     // Reserving before the POST avoids repeating an unconfirmed send after a crash.
     this.delivery.markNotice(key);
     try { this.delivery.markNotice(key, await this.telegram.say(message)); }
     catch (error) {
       this.log('Telegram notification not confirmed.');
-      if (error.retryAfter > 0) {
-        this.delivery.markNotice(key, null, Date.now() + error.retryAfter * 1000);
+      if (!error.ambiguous && (error.notSent || error.status === 429 || error.status === 403)) {
+        let delay = 0;
+        if (error.status === 403) delay = 60;
+        else if (error.status === 429) delay = error.retryAfter || 30;
+        this.delivery.markNotice(key, null, Date.now() + delay * 1000);
         return false;
       }
     }
@@ -124,6 +132,7 @@ export class Bot {
 
   async scan() {
     for (const code of await this.codes()) {
+      if (this.telegram.signal?.aborted) break;
       const dir = join(this.root, code);
       try {
         const version = (await statIfPresent(join(dir, 'artifact/episode.json')))?.mtimeMs;
@@ -132,7 +141,10 @@ export class Bot {
           const ep = await this.episode(code);
           if (ep.status === 'published' && ep.legacy) return false;
           const error = await blockingEpisodeAttempt(dir);
-          if (error) return { key: `error:${code}:${error.path}:${error.code}`, message: `${label(ep)} đang dừng ở ${error.slide ? `ảnh ${error.slide}` : 'mẫu nhân vật'} — ${error.code}${error.code === 'IMG_TIMEOUT' ? ', chưa rõ API đã tạo ảnh hay chưa' : ''}.` };
+          if (error) {
+            const uncertain = error.state === 'in_flight' || error.state === 'unknown';
+            return { key: `error:${code}:${error.path}:${error.code}`, message: `${label(ep)} đang dừng ở ${error.slide ? `ảnh ${error.slide}` : 'mẫu nhân vật'} — ${error.code}${uncertain ? ', chưa rõ API đã tạo ảnh hay chưa' : ''}.` };
+          }
           if (!deliverableStatus(ep.status)) return null;
           const bundle = await episodeBundle(dir);
           return { key: `done:${code}:${bundle.key}`, message: `${label(ep)} đã xong.` };

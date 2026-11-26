@@ -39,5 +39,5 @@
     "note": "Bản sao nguyên byte của PHAT_01-candidate-v1.jpg trong tập thử local-api-e2e-20261111-v1. Đăng ký làm mẫu generated theo quy trình mới, không sửa báo cáo gốc.",
     "sha256": "2addb51cf2e11ceacb3aada93781f949d519e094fd796d7bf4877e22a9c9237d"
   },
-  "review_note": "Chưa được người dùng duyệt. Ảnh mẫu định danh nhân vật; khi vẽ slide phải chừa vùng chữ theo style.md, không sao chép nguyên bố cục mẫu."
+  "review_note": "Chưa được người dùng duyệt. Ảnh mẫu định danh nhân vật; khi vẽ slide phải chừa vùng chữ theo docs/visual-style.md, không sao chép nguyên bố cục mẫu."
 }

@@ -43,8 +43,10 @@
 
 Mở [ảnh ví dụ gốc](../references/user-style-v1/example-01-original.png) và gửi ảnh thật với
 vai trò **chỉ tham chiếu phong cách** khi vẽ hoặc sửa slide. Có thể dùng ảnh đã
-được người dùng xác nhận đúng phong cách cho công việc đó. Mẫu định danh vẫn
-được gửi riêng; ảnh phong cách chỉ hướng dẫn kiểu chữ, nét chì, màu nền và
+được người dùng xác nhận đúng phong cách cho công việc đó: lưu bản sao trong
+thư mục tập rồi đặt `style_ref` là đường dẫn tương đối trong `artifact/episode.json`
+(ví dụ `references/style.jpg`) trước khi `lock`. Script khóa hash ảnh này; nếu
+không đặt `style_ref` thì dùng ảnh ví dụ gốc. Mẫu định danh vẫn được gửi riêng; ảnh phong cách chỉ hướng dẫn kiểu chữ, nét chì, màu nền và
 khoảng trắng. Không chép nội dung chữ, người hay vật từ ảnh phong cách. Ảnh
 ví dụ 765 × 1024 không phải kích thước đầu ra.
 

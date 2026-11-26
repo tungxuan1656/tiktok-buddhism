@@ -7,7 +7,8 @@ import { execFileSync } from 'node:child_process';
 import { createEpisode, changeEpisode, episodeHandoff, rejectImage } from '../scripts/episode-tools.mjs';
 import { draw, recoverAttempt } from '../scripts/draw-image.mjs';
 import { exportSlide } from '../scripts/export-slide.mjs';
-import { episodeBundle, loadValidated, readEpisode, writeEpisode } from '../scripts/lib/episode.mjs';
+import { checkPath, episodeBundle, loadValidated, readEpisode, writeEpisode } from '../scripts/lib/episode.mjs';
+import { sha256Bytes } from '../scripts/lib/fingerprint.mjs';
 
 const page = text => ({ text, scene: 'A simple scene', scene_type: 'concept', characters: [] });
 const png = color => execFileSync('magick', ['-size', '20x30', `xc:${color}`, 'png:-']);
@@ -54,18 +55,21 @@ test('sequential draws reuse bytes, require an immediate visual check, and reope
   await assert.rejects(call(2), /first unfinished/);
   assert.deepEqual(await readFile(join(a, '..', 'response.bin')), colors[0]);
   assert.equal(execFileSync('magick', ['identify', '-format', '%m %w %h %Q %[jpeg:sampling-factor]', a], { encoding: 'utf8' }), 'JPEG 1080 1440 95 1x1,1x1,1x1');
-  await rejectImage(dir, relative(dir, a), 'Wrong diacritic');
+  await assert.rejects(rejectImage(dir, `./drafts/../${relative(dir, a)}`, 'Wrong diacritic'), /escaping/);
+  await rejectImage(dir, `./${relative(dir, a)}`, 'Wrong diacritic');
   assert.equal((await episodeHandoff(dir)).next, 'repair');
   await assert.rejects(exportSlide(dir, relative(dir, a), 'checked'), /rejected/);
   const b = await call(1);
-  const first = await exportSlide(dir, relative(dir, b), 'Read pixels and checked all accents');
-  assert.equal((await stat(b)).ino, (await stat(join(dir, first.file))).ino);
+  const first = await exportSlide(dir, `./${relative(dir, b)}`, 'Read pixels and checked all accents');
+  assert.notEqual((await stat(b)).ino, (await stat(join(dir, first.file))).ino);
+  assert.deepEqual(await readFile(b), await readFile(join(dir, first.file)));
   assert.equal((await exportSlide(dir, relative(dir, b), 'checked')).action, 'reused');
   assert.equal(await call(1), join(dir, first.file));
   await assert.rejects(changeEpisode(dir, 'finalize'), /Missing verified/);
   const c = await call(2);
   await exportSlide(dir, relative(dir, c), 'checked');
-  await changeEpisode(dir, 'finalize');
+  const finalized = await changeEpisode(dir, 'finalize');
+  assert.deepEqual(await changeEpisode(dir, 'finalize'), finalized);
   const bundle = await episodeBundle(dir);
   assert.equal(bundle.files.length, 2);
   await changeEpisode(dir, 'reopen');
@@ -76,6 +80,13 @@ test('sequential draws reuse bytes, require an immediate visual check, and reope
   await changeEpisode(dir, 'lock');
   assert.deepEqual((await episodeHandoff(dir)).kept, [1]);
   assert.equal((await episodeHandoff(dir)).page.slide, 2);
+  await changeEpisode(dir, 'reopen');
+  ep.slides.pop();
+  await writeEpisode(dir, { ...await readEpisode(dir), slides: ep.slides });
+  await changeEpisode(dir, 'lock');
+  assert.deepEqual(await changeEpisode(dir, 'finalize'), finalized);
+  await assert.rejects(stat(join(dir, checkPath(2))), { code: 'ENOENT' });
+  await assert.rejects(stat(join(dir, 'artifact/images/002.jpg')), { code: 'ENOENT' });
   assert.equal(calls, 3);
 });
 
@@ -94,7 +105,7 @@ for (const [label, response, code] of [
     assert.equal(blocked.code, code);
     assert.equal(blocked.slide, 1);
     assert.equal(calls, 1);
-    await recoverAttempt(dir, '001-a1', { note: 'Verified no usable result and resolved the cause' });
+    await recoverAttempt(dir, blocked.path, { note: 'Verified no usable result and resolved the cause' });
     assert.equal((await episodeHandoff(dir)).page.attempt, '001-a2');
   });
 }
@@ -104,13 +115,89 @@ test('normalization recovers the recorded response without sending another POST'
   const raw = png('white');
   let calls = 0;
   const work = await draw({ episodeDir: dir, slide: 1, request: () => { calls++; return new Response(raw); } });
-  const status = join(work, '..', 'status.json');
-  await writeFile(status, JSON.stringify({ ...JSON.parse(await readFile(status)), state: 'received', output: undefined }));
+  const saved = await readFile(work);
   await rm(work);
-  assert.equal((await episodeHandoff(dir)).blocked.raw_recoverable, true);
-  assert.equal(await recoverAttempt(dir, '001-a1'), work);
+  let handoff = await episodeHandoff(dir);
+  assert.equal(handoff.next, 'resolve_attempt');
+  assert.equal(handoff.blocked.code, 'IMG_DRAFT_DAMAGED');
+  assert.equal(handoff.blocked.raw_recoverable, true);
+  await assert.rejects(draw({ episodeDir: dir, slide: 1, request: () => assert.fail('unexpected POST') }), /run handoff/);
+  const output = execFileSync(process.execPath, ['scripts/draw-image.mjs', '--normalize', dir, `./${handoff.blocked.path}`], { encoding: 'utf8' });
+  assert.equal(output.trim(), work);
+  assert.deepEqual(await readFile(work), saved);
+  assert.equal((await episodeHandoff(dir)).next, 'review');
+
+  const status = join(work, '..', 'status.json');
+  const response = join(work, '..', 'response.bin');
+  await writeFile(status, JSON.stringify({ ...JSON.parse(await readFile(status)), state: 'received', output: undefined }));
+  await rm(response);
+  assert.equal((await episodeHandoff(dir)).blocked.raw_recoverable, false);
+  await writeFile(response, raw.subarray(0, 20));
+  assert.equal((await episodeHandoff(dir)).blocked.raw_recoverable, false);
+  await assert.rejects(recoverAttempt(dir, '001-a1'), /No verified response/);
+  await writeFile(response, raw);
+  handoff = await episodeHandoff(dir);
+  assert.equal(handoff.blocked.raw_recoverable, true);
+  assert.equal(await recoverAttempt(dir, handoff.blocked.name), work);
   assert.equal((await episodeHandoff(dir)).next, 'review');
   assert.equal(calls, 1);
+});
+
+test('a rejected migrated artifact supplies the repair note without a draft', async t => {
+  const dir = await locked(t, [page('Imported page.')]);
+  const file = 'artifact/images/001.png';
+  const bytes = png('white');
+  const { episode, validation } = await loadValidated(dir);
+  await mkdir(join(dir, 'artifact/images'));
+  await mkdir(join(dir, 'artifact/checks'));
+  await writeFile(join(dir, file), bytes);
+  await writeFile(join(dir, checkPath(1)), JSON.stringify({ image: file, image_sha256: sha256Bytes(bytes),
+    slide_content_sha256: validation.slideFingerprints[0], legacy: true, visual_check: { passed: true, note: 'Imported original' } }));
+  await writeEpisode(dir, { ...episode, status: 'published', legacy: { bundle: 'verified' } });
+  await changeEpisode(dir, 'reopen');
+  await rejectImage(dir, `./${file}`, 'Repair the left border');
+  await changeEpisode(dir, 'lock');
+  assert.equal((await episodeHandoff(dir)).next, 'repair');
+  await draw({ episodeDir: dir, slide: 1, request: (_url, { body }) => {
+    assert.match(JSON.parse(body).prompt, /Repair the left border/);
+    return new Response(png('green'));
+  } });
+});
+
+test('only visual drafts count toward the attempt limit', async t => {
+  const dir = await locked(t, [page('Page one.')]);
+  const job = { episodeDir: dir, slide: 1 };
+  await assert.rejects(draw({ ...job, request: () => new Response('', { status: 503 }) }), /Do not retry/);
+  const { blocked } = await episodeHandoff(dir);
+  const resolved = execFileSync(process.execPath, ['scripts/draw-image.mjs', '--reconcile', dir, blocked.path,
+    '--note', 'Verified no usable response'], { encoding: 'utf8' });
+  assert.deepEqual(JSON.parse(resolved), { reconciled: 'drafts/001-a1' });
+  for (const [index, color] of ['blue', 'red', 'yellow'].entries()) {
+    const draft = await draw({ ...job, request: () => new Response(png(color)) });
+    assert.equal(relative(dir, draft), `drafts/001-a${index + 2}/image.jpg`);
+    await rejectImage(dir, relative(dir, draft), 'Not usable');
+  }
+  assert.equal((await episodeHandoff(dir)).next, 'attempt_limit');
+  await assert.rejects(draw({ ...job, request: () => assert.fail('unexpected POST') }), /Attempt limit/);
+});
+
+test('approved style overrides are confined, sent first and pinned at lock', async t => {
+  const dir = await locked(t, [page('A styled page.')]);
+  const art = png('pink');
+  await changeEpisode(dir, 'reopen');
+  const ep = await readEpisode(dir);
+  await writeEpisode(dir, { ...ep, style_ref: '../style.png' });
+  await assert.rejects(changeEpisode(dir, 'lock'), /Invalid style_ref/);
+  await writeFile(join(dir, 'style.png'), art);
+  await writeEpisode(dir, { ...ep, style_ref: './style.png' });
+  await changeEpisode(dir, 'lock');
+  const job = { episodeDir: dir, slide: 1 };
+  await draw({ ...job, request: (_url, { body }) => {
+    assert.equal(JSON.parse(body).images[0], `data:image/png;base64,${art.toString('base64')}`);
+    return new Response(art);
+  } });
+  await writeFile(join(dir, 'style.png'), png('orange'));
+  await assert.rejects(draw({ ...job, request: () => assert.fail('unexpected POST') }), /changed since lock/);
 });
 
 test('a tampered locked script cannot send a request, and invalid verbatim cannot lock', async t => {

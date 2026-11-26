@@ -13,7 +13,7 @@ function formatCharDesc(loaded) {
 export function slidePrompt(dir, episode, validation, slide, correction) {
   const s = episode.slides[slide - 1];
   const resolvedChars = validation.resolvedCharsBySlide[slide - 1];
-  const resolvedStyleRef = join(REPO_ROOT, DEFAULT_STYLE_REL);
+  const resolvedStyleRef = validation.styleReference?.path ?? join(REPO_ROOT, DEFAULT_STYLE_REL);
   const refs = [resolvedStyleRef];
   const refLabels = ['1. Ảnh phong cách (chỉ tham chiếu nét chì, kiểu chữ, nền giấy và khoảng trắng; không chép chữ/người/vật)'];
   const charDescs = [];

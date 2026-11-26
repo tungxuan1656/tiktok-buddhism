@@ -196,6 +196,18 @@ export async function validateEpisodeData(ep, episodeDir, {
     issues.push(`slides[] must have ${MIN_SLIDES}-${MAX_SLIDES} items (got ${Array.isArray(ep.slides) ? ep.slides.length : 'none'})`);
   }
 
+  let styleReference;
+  if (ep.style_ref !== undefined) {
+    try {
+      const { real, stat } = await confineRelativeFile(dir, ep.style_ref);
+      if (stat.size < 3 || stat.size > MAX_IMAGE_BYTES) throw new Error('Invalid image size');
+      const bytes = await readFile(real);
+      if (bytes.length !== stat.size) throw new Error('Image changed while reading');
+      imageMime(bytes);
+      styleReference = { path: real, sha256: sha256Bytes(bytes), bytes: bytes.length };
+    } catch (error) { issues.push(`Invalid style_ref: ${error.message}`); }
+  }
+
   const seenChars = new Map();
   const resolvedCharsBySlide = [];
   const slides = Array.isArray(ep.slides) ? ep.slides : [];
@@ -229,7 +241,7 @@ export async function validateEpisodeData(ep, episodeDir, {
     }
 
     let refCount = 1; // Style reference image is always slot 1.
-    let refBytes = 0;
+    let refBytes = styleReference?.bytes ?? 0;
     for (const c of s?.characters ?? []) {
       if (!isSafeId(c?.id) || !isSafeVersion(c?.version)) {
         issues.push(`Slide ${num}: invalid character reference (require safe id and version)`);
@@ -249,7 +261,7 @@ export async function validateEpisodeData(ep, episodeDir, {
     }
     if (refCount > MAX_REFS) issues.push(`Slide ${num}: ${refCount} reference images exceed API maximum of ${MAX_REFS}`);
     if (refBytes > MAX_TOTAL_REF_BYTES) {
-      issues.push(`Slide ${num}: aggregate character reference payload (${refBytes} bytes) exceeds ${MAX_TOTAL_REF_BYTES} limit`);
+      issues.push(`Slide ${num}: aggregate reference payload (${refBytes} bytes) exceeds ${MAX_TOTAL_REF_BYTES} limit`);
     }
     resolvedCharsBySlide.push(slideChars);
   }
@@ -284,7 +296,7 @@ export async function validateEpisodeData(ep, episodeDir, {
   }
 
   const slideFingerprints = issues.length === 0
-    ? slides.map((_, idx) => computeSlideFingerprint(ep, idx, resolvedCharsBySlide[idx] ?? []))
+    ? slides.map((_, idx) => computeSlideFingerprint(ep, idx, resolvedCharsBySlide[idx] ?? [], styleReference?.sha256))
     : [];
 
   return {
@@ -293,6 +305,7 @@ export async function validateEpisodeData(ep, episodeDir, {
     slideCount: slides.length,
     sourceSha256,
     resolvedCharsBySlide,
+    styleReference,
     slideFingerprints,
     issues,
   };

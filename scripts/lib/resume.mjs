@@ -1,6 +1,7 @@
 import { lstat, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { MAX_EPISODE_JSON_BYTES, RECONCILED_STATES, UNRESOLVED_STATES } from './policy.mjs';
+import { sha256Bytes } from './fingerprint.mjs';
+import { MAX_EPISODE_JSON_BYTES, MAX_IMAGE_BYTES, RECONCILED_STATES, UNRESOLVED_STATES } from './policy.mjs';
 import { confineRelativeFile } from './paths.mjs';
 import { isSha256 } from './schema.mjs';
 
@@ -85,6 +86,33 @@ export async function episodeAttempts(dir) {
 
 export function blockingAttempt(attempts) {
   return attempts.find(a => a.state === 'failed' || UNRESOLVED_STATES.has(a.state));
+}
+
+// Reconciled transport failures did not use up an image review attempt.
+export const visualAttempts = attempts => attempts.filter(a => a.state === 'succeeded' || a.previous_state === 'succeeded').length;
+
+async function verifiedFile(dir, path, hash) {
+  if (!isSha256(hash)) return null;
+  try {
+    const { real, stat } = await confineRelativeFile(dir, path);
+    if (!stat.size || stat.size > MAX_IMAGE_BYTES) return null;
+    const bytes = await readFile(real);
+    return bytes.length === stat.size && sha256Bytes(bytes) === hash ? real : null;
+  } catch { return null; }
+}
+
+export const verifiedDraft = (dir, attempt) => verifiedFile(dir, `${attempt.path}/image.jpg`, attempt.output?.sha256);
+
+export async function verifiedRawResponse(dir, attempt) {
+  if (!['received', 'normalize_failed', 'succeeded'].includes(attempt.state)) return null;
+  return verifiedFile(dir, `${attempt.path}/response.bin`, attempt.response_sha256);
+}
+
+export async function attemptIssue(dir, attempt) {
+  return { path: attempt.path, name: attempt.name, state: attempt.state, slide: attempt.plan.slide ?? null,
+    character: attempt.plan.character ? attempt.plan.target : null,
+    code: attempt.state === 'succeeded' ? 'IMG_DRAFT_DAMAGED' : imageError(attempt),
+    raw_recoverable: !!await verifiedRawResponse(dir, attempt) };
 }
 
 export function imageError(attempt) {

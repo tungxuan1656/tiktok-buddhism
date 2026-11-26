@@ -11,6 +11,8 @@ export async function writeAtomic(target, content, mode = 0o644) {
   await rename(tmp, target);
 }
 
+export const stripDotSlash = value => value.replace(/^(?:\.\/)+/, '');
+
 /** Check lexical containment of a relative path within baseDir without hitting disk. */
 export function confineRelativeLexical(baseDir, relPath) {
   if (typeof relPath !== 'string' || !relPath.trim() || relPath.includes('\0') || isAbsolute(relPath)) return null;
