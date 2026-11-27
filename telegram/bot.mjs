@@ -7,7 +7,7 @@ import { withEpisodeLock } from '../scripts/lib/lock.mjs';
 import { attemptState, imageError, LOOKAHEAD_GUARD, LookaheadStateError, lookaheadCanReview, statIfPresent } from '../scripts/lib/resume.mjs';
 import { TelegramError } from './api.mjs';
 
-const states = { draft: 'đang soạn hoặc chỉnh', locked: 'đang làm ảnh', ready_for_review: 'đã xong, chờ đăng', published: 'đã đăng' };
+const states = { draft: 'đang soạn hoặc chỉnh', locked: 'đang làm ảnh', ready_for_review: 'đã xong, chờ đăng' };
 const label = ep => `${ep.code}: "${ep.title.replace(/\s+/g, ' ').trim()}"`;
 const number = code => Number(code.slice(1));
 const inspectMessage = code => `${code} cần kiểm tra trước khi tiếp tục. Hãy chạy handoff cho tập này.`;
@@ -210,9 +210,10 @@ export class Bot {
     for (const code of await this.codes()) {
       let ep;
       try { ep = await this.episode(code); } catch { continue; }
+      if (ep.status === 'published') continue;
       lines.push(`${label(ep)} — ${states[ep.status]}`);
     }
-    if (!lines.length) return this.telegram.say('Chưa có tập nào.', beforePost);
+    if (!lines.length) return this.telegram.say('Không có tập nào chưa đăng.', beforePost);
     for (const chunk of splitChunks(`Danh sách tập:\n${lines.join('\n')}`)) {
       await this.telegram.say(chunk, beforePost);
     }

@@ -822,6 +822,52 @@ test('a long episode list splits on rows and a locked episode is not sent', asyn
   assert.equal(photos.length, 0);
 });
 
+test('episodes command excludes published episodes and reports when none are unpublished', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'buddhism-bot-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  const { bot, messages, delivery } = mock(root);
+  t.after(delivery.close);
+
+  await bot.update(update(1, 'episodes'));
+  assert.equal(messages.at(-1), 'Không có tập nào chưa đăng.');
+
+  const make = async (title, status) => {
+    const { dir } = await createEpisode(root, title, 'Request');
+    const ep = await readEpisode(dir);
+    await writeEpisode(dir, { ...ep, slides: [{ text: 'Slide.', scene: 'Quiet scene', scene_type: 'concept', characters: [] }] });
+    if (status !== 'draft') await changeEpisode(dir, 'lock');
+    if (status === 'ready_for_review' || status === 'published') await fill(dir, 1);
+    if (status === 'published') await changeEpisode(dir, 'publish');
+    return dir;
+  };
+
+  const t1 = await make('Tập đã đăng', 'published');
+  await bot.update(update(2, '/episodes'));
+  assert.equal(messages.at(-1), 'Không có tập nào chưa đăng.');
+
+  await make('Tập đang soạn', 'draft');
+  await make('Tập đang vẽ', 'locked');
+  const t4 = await make('Tập chờ đăng', 'ready_for_review');
+  await make('Tập cũ đã đăng', 'published');
+
+  await bot.update(update(3, 'episodes'));
+  assert.equal(
+    messages.at(-1),
+    'Danh sách tập:\nT4: "Tập chờ đăng" — đã xong, chờ đăng\nT3: "Tập đang vẽ" — đang làm ảnh\nT2: "Tập đang soạn" — đang soạn hoặc chỉnh',
+  );
+
+  await changeEpisode(t4, 'publish');
+  await bot.update(update(4, '/EPISODES'));
+  assert.equal(
+    messages.at(-1),
+    'Danh sách tập:\nT3: "Tập đang vẽ" — đang làm ảnh\nT2: "Tập đang soạn" — đang soạn hoặc chỉnh',
+  );
+
+  await changeEpisode(t1, 'reopen');
+  await bot.update(update(5, 'episodes'));
+  assert.match(messages.at(-1), /T1: "Tập đã đăng" — đang soạn hoặc chỉnh/);
+});
+
 test('view ack rate limit keeps the cursor pending and polling observes retry_after', async t => {
   const { root } = await setup(t, 'Đang làm', ['Một trang.']);
   t.mock.timers.enable({ apis: ['Date'], now: 1000 });

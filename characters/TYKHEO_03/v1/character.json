@@ -1,0 +1,46 @@
+{
+  "id": "TYKHEO_03",
+  "name": "Cụ Tỳ kheo lớn tuổi (thiết kế minh họa)",
+  "aliases": [
+    "người xuất gia lớn tuổi",
+    "cụ Tỳ kheo",
+    "vị xuất gia tuổi về chiều",
+    "cụ Sa-di"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam tu sĩ Nam Á cao niên khoảng 68–72 tuổi, da nâu ấm hơi sạm nhẹ tự nhiên, khuôn mặt hiền hậu có nếp nhăn rõ ở trán, khóe mắt và hai bên má, lông mày thưa màu xám muối tiêu, mắt nâu trầm tĩnh hiền từ, mũi vừa, môi mỉm nhẹ kín đáo; không râu/ria, tai bình thường.",
+    "hair": "Đầu cạo sạch trơn nhẵn, không tóc và không búi đỉnh đầu.",
+    "body": "Vóc dáng hơi mảnh khảnh tuổi cao cân đối, vai hơi xuôi tự nhiên khiêm cung, đứng chân trần.",
+    "clothing": "Y tăng vải mềm màu nâu vàng đất ấm nhạt (light warm ochre-brown), phủ kín cả hai vai với tay áo dài đến cổ tay và cổ áo lót màu kem vàng nhạt; nếp vải mềm dài gần mắt cá chân, không trang sức, không chuỗi tràng hạt."
+  },
+  "keep": [
+    "Giữ gương mặt cao niên khoảng 68–72 tuổi với nếp nhăn ở trán/khóe mắt/má, lông mày muối tiêu thưa, đầu cạo sạch, tai bình thường, không râu.",
+    "Giữ y tăng màu nâu vàng đất ấm nhạt phủ hai vai, tay áo dài, cổ áo lót kem vàng nhạt và chân trần.",
+    "Chất liệu chì màu 2D nét mảnh, biểu cảm điềm tĩnh khiêm hòa trên nền giấy gần trắng."
+  ],
+  "can_vary": [
+    "Đứng, ngồi, bước đi, cúi chào hoặc tư thế tay tự nhiên",
+    "Hướng nhìn và biểu cảm nhẹ phù hợp cảnh"
+  ],
+  "avoid": [
+    "Tóc xoăn búi đỉnh đầu hoặc dái tai dài như Đức Phật",
+    "Nét trẻ hoặc trung niên như TYKHEO_01/TYKHEO_02",
+    "Y vàng rực chói hoặc y hở vai phải như PHAT_01/ANANDA_01",
+    "Râu, ria mép, trang sức, hào quang hoặc vật phụ ngoài yêu cầu",
+    "Xác nhận diện mạo người thật/lịch sử hoặc gán làm người phạm lỗi"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "T46",
+    "draft": "drafts/character-TYKHEO_03-v1-a1",
+    "sha256": "56b02e4990edf641d05853f10c938bac82dd91409a61952505e98c08e96e980f",
+    "note": "Thiết kế minh họa quy ước tạo trong tập T46 cho vị xuất gia lớn tuổi (tuổi về chiều); ảnh phong cách gốc chỉ gợi nét chì và nền giấy, không khẳng định diện mạo lịch sử."
+  },
+  "review_note": "Đã mở JPEG sau nén (1080x1440): một cụ Tỳ kheo cao niên đứng đủ thân chân trần, đầu cạo sạch, tai bình thường, mặt hiền hậu có nếp nhăn tuổi già và lông mày muối tiêu, hai tay đan nhẹ trước bụng tự nhiên, y nâu vàng đất ấm nhạt phủ hai vai tay dài cổ áo lót kem vàng nhạt, nền giấy sạch không chữ. Chưa được người dùng duyệt."
+}

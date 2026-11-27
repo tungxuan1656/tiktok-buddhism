@@ -1,0 +1,45 @@
+{
+  "id": "TYKHEONI_01",
+  "name": "Tỳ kheo ni (thiết kế minh họa)",
+  "aliases": [
+    "Tỳ kheo ni",
+    "vị Tỳ kheo ni",
+    "ni chúng"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nữ tu sĩ Nam Á khoảng 30–35 tuổi, da nâu sáng ấm, khuôn mặt trái xoan hiền hậu thanh tú, lông mày đen mảnh cong tự nhiên, mắt nâu điềm tĩnh, mũi thanh vừa, môi mỉm nhẹ kín đáo; không trang điểm, không chấm trán, tai bình thường.",
+    "hair": "Đầu cạo sạch trơn nhẵn hoàn toàn, không tóc, không búi đỉnh đầu và không khăn trùm đầu.",
+    "body": "Vóc dáng thanh gọn cân đối, vai mảnh nhẹ nhàng, tỷ lệ người trưởng thành, đứng chân trần.",
+    "clothing": "Y tăng nữ màu nâu đất ấm dịu (cùng tông ấm với TYKHEO_02), phủ kín cả hai vai với tay áo dài đến cổ tay và cổ áo lót màu kem vàng nhạt; nếp vải mềm dài gần mắt cá chân, không trang sức, không chuỗi tràng hạt."
+  },
+  "keep": [
+    "Giữ khuôn mặt nữ trái xoan hiền hậu tuổi 30–35, da nâu sáng ấm, lông mày cong mảnh, đầu cạo sạch không khăn trùm, tai bình thường, không trang điểm.",
+    "Giữ y tăng nữ màu nâu đất ấm dịu phủ hai vai, tay áo dài, cổ áo lót kem vàng nhạt và chân trần.",
+    "Chất liệu chì màu 2D nét mảnh, biểu cảm điềm tĩnh tiết chế trên nền giấy gần trắng."
+  ],
+  "can_vary": [
+    "Đứng, ngồi, quỳ, bước đi và tư thế tay tự nhiên",
+    "Hướng nhìn và biểu cảm nhẹ phù hợp cảnh"
+  ],
+  "avoid": [
+    "Tóc dài, búi tóc, khăn trùm đầu hoặc trang sức/chấm trán",
+    "Nét mặt nam tính hoặc dái tai dài, búi xoăn đỉnh đầu như Đức Phật",
+    "Y vàng rực chói hoặc y hở vai",
+    "Hào quang, bệ hoặc vật phụ không yêu cầu",
+    "Xác nhận diện mạo người thật/lịch sử hoặc gán làm người phạm lỗi"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "T47",
+    "draft": "drafts/character-TYKHEONI_01-v1-a3",
+    "sha256": "9c959df1fdcfec561d41768de9195c5bd47f338c2a1c5318efe452cc15c68662",
+    "note": "Thiết kế minh họa quy ước tạo trong tập T47 cho vị Tỳ kheo ni; ảnh phong cách gốc và TYKHEO_02 chỉ gợi nét chì, nền giấy và hệ màu y nâu dịu, không khẳng định diện mạo lịch sử."
+  },
+  "review_note": "Đã mở JPEG sau nén (1080x1440): một vị Tỳ kheo ni đứng đủ thân chân trần, đầu cạo sạch không khăn trùm, tai bình thường, mặt nữ trái xoan hiền hậu không trang điểm, hai tay đan nhẹ trước bụng đủ 5 ngón tự nhiên, y nâu đất ấm dịu phủ hai vai tay dài cổ áo lót kem vàng nhạt, nền giấy sạch không chữ. Chưa được người dùng duyệt."
+}
