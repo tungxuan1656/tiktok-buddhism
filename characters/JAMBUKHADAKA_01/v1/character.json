@@ -1,0 +1,45 @@
+{
+  "id": "JAMBUKHADAKA_01",
+  "name": "Du sĩ Jambukhàdaka (thiết kế minh họa)",
+  "aliases": [
+    "Jambukhàdaka",
+    "Jambukhadaka",
+    "du sĩ Jambukhàdaka"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam du sĩ Nam Á khoảng 36–40 tuổi, da nâu ấm, khuôn mặt trái xoan hơi thon có nét tư duy trầm tĩnh, lông mày đen nét vừa, mắt nâu sáng hiền hòa có vẻ cầu học, mũi thẳng vừa, ria mép và râu cằm ngắn màu đen cắt tỉa gọn gàng; tai bình thường.",
+    "hair": "Tóc đen dài vừa (có vài sợi bạc nhẹ tự nhiên) chải gọn ra sau và buộc thành búi nhỏ thấp đơn sơ sau gáy; không đội khăn, không búi đỉnh đầu.",
+    "body": "Vóc dáng thanh gọn cân đối, người trưởng thành, chân trần.",
+    "clothing": "Áo vải thô cổ tròn tay ngắn màu xám đá nhạt xẻ tà hai bên dài qua hông; khăn vải mộc màu xám be nhạt khoác nhẹ qua vai trái rủ trước ngực; phía dưới quấn dhoti vải thô màu be xám dịu dài gần mắt cá chân. Không trang sức, không chuỗi hạt, không gậy."
+  },
+  "keep": [
+    "Giữ khuôn mặt thon có ria mép và râu cằm đen ngắn gọn, tóc đen chải gọn buộc búi nhỏ thấp sau gáy.",
+    "Giữ áo cổ tròn tay ngắn màu xám đá nhạt, khăn vải xám be nhạt vai trái, dhoti be xám dịu và chân trần.",
+    "Chất liệu chì màu 2D nét mảnh, biểu cảm điềm tĩnh cầu học tiết chế trên nền giấy gần trắng."
+  ],
+  "can_vary": [
+    "Đứng, ngồi, bước tới hoặc chắp tay chào hỏi, tư thế tay tự nhiên theo cảnh",
+    "Hướng nhìn và biểu cảm nhẹ khi hỏi han hoặc lắng nghe"
+  ],
+  "avoid": [
+    "Đầu cạo trọc hoặc mặt không râu giống SARIPUTTA_01",
+    "Tóc xoăn búi đỉnh đầu hoặc dái tai dài như Đức Phật",
+    "Y nâu vàng hoặc y nâu đất của Tỳ kheo/Sàriputta",
+    "Trang sức, hào quang, gậy hoặc chi tiết biếm họa",
+    "Khẳng định diện mạo lịch sử đã xác minh"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "T48",
+    "draft": "drafts/character-JAMBUKHADAKA_01-v1-a1",
+    "sha256": "1413b22db8855d6b4977cdf5f2ec930a10640e6d91180ffef08ecce78f8c1bcf",
+    "note": "Thiết kế minh họa quy ước tạo trong tập T48 cho du sĩ Jambukhàdaka; ảnh phong cách gốc chỉ gợi nét chì và nền giấy, không khẳng định diện mạo lịch sử."
+  },
+  "review_note": "Đã mở JPEG sau nén (1080x1440): một người đứng đủ thân chân trần, tóc đen buộc búi nhỏ thấp sau gáy không khăn/búi đỉnh đầu, ria mép và râu cằm đen ngắn gọn, áo tay ngắn xám đá nhạt, khăn xám be nhạt vai trái, dhoti be xám dịu, hai tay 5 ngón và hai bàn chân tự nhiên, nền giấy sạch không chữ. Chưa được người dùng duyệt."
+}
