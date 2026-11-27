@@ -1,0 +1,44 @@
+{
+  "id": "VUONGTU_01",
+  "name": "Vị vương tử trẻ tuổi (thiết kế minh họa)",
+  "aliases": [
+    "vương tử trẻ tuổi",
+    "hoàng tử trẻ tuổi",
+    "vị vương tử"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam thiếu niên Nam Á khoảng 14–16 tuổi, da nâu sáng ấm, nét mặt thanh tú trẻ trung, lông mày đen gọn, mắt nâu sáng điềm tĩnh, sống mũi thanh, môi mỉm nhẹ kín đáo; không râu hay ria mép, tai bình thường.",
+    "hair": "Tóc đen xoăn gợn nhẹ dài chạm gáy; dải băng miện mảnh đơn giản màu vàng đất nhạt ngang trán, không đính ngọc hay mũ cao.",
+    "body": "Vóc dáng thiếu niên thanh gọn cân đối, đứng thẳng khiêm cung, chân trần.",
+    "clothing": "Áo tunic tay dài màu kem vàng đất nhạt, cổ tròn khe ngắn có viền nâu đất mảnh ở cổ, cổ tay và gấu áo; thắt lưng vải màu nâu vàng đất ngang eo; quần dhoti màu kem ngà dài tới mắt cá chân; khăn choàng mỏng màu vàng đất nhạt khoác qua vai trái buông dọc thân. Không trang sức hay binh khí."
+  },
+  "keep": [
+    "Giữ khuôn mặt thiếu niên thanh tú không râu, tóc đen gợn chạm gáy và dải băng miện mảnh màu vàng đất nhạt.",
+    "Giữ áo tunic kem vàng đất nhạt viền nâu mảnh, thắt lưng nâu vàng đất, khăn vàng đất nhạt qua vai trái, quần dhoti kem và chân trần.",
+    "Chất liệu chì màu 2D nét mảnh, thần thái điềm tĩnh khiêm cung trên nền giấy gần trắng."
+  ],
+  "can_vary": [
+    "Đứng, ngồi hoặc bước đi và tư thế tay tự nhiên",
+    "Hướng nhìn và biểu cảm nhẹ phù hợp cảnh"
+  ],
+  "avoid": [
+    "Râu, ria mép hoặc nét trung niên như PASENADI_01",
+    "Mũ nhọn cao, ngọc lớn, trang sức, kiếm, trượng hoặc ngai vàng",
+    "Y tu sĩ hoặc tóc xoăn búi đỉnh đầu/dái tai dài như Đức Phật",
+    "Khẳng định diện mạo hoặc phục trang lịch sử đã xác minh"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "T53",
+    "draft": "drafts/character-VUONGTU_01-v1-a1",
+    "sha256": "0e8caaa2db1b2c5b5d783dc38d4821fcc9b7082fc68c03810e3b9b6ebb0a37d9",
+    "note": "Thiết kế minh họa quy ước tạo trong tập T53 cho vị vương tử/hoàng tử trẻ tuổi; ảnh phong cách gốc chỉ gợi nét chì và nền giấy, ảnh PASENADI_01 chỉ gợi ngôn ngữ trang phục cùng vùng văn hóa, không khẳng định diện mạo lịch sử."
+  },
+  "review_note": "Đã mở JPEG sau nén: một vị vương tử trẻ đứng đủ thân chân trần, không râu, tóc đen gợn chạm gáy, băng miện vàng đất mảnh, áo tunic kem vàng đất viền nâu mảnh, thắt lưng nâu vàng đất, khăn choàng vai trái và quần dhoti kem đúng mô tả, không chữ. Chưa được người dùng duyệt."
+}

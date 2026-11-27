@@ -1,0 +1,44 @@
+{
+  "id": "BODHI_01",
+  "name": "Vương tử Bodhi (thiết kế minh họa)",
+  "aliases": [
+    "Bodhi",
+    "vương tử Bodhi",
+    "hoàng tử Bodhi"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam thanh niên Nam Á khoảng 25–28 tuổi, da nâu sáng ấm, khuôn mặt thanh tú chín chắn, cằm gọn, lông mày đen gọn hơi cong nhẹ, mắt nâu trầm tĩnh hiền hòa, sống mũi thẳng, môi mỉm nhẹ khiêm cung; không râu hay ria mép, tai bình thường.",
+    "hair": "Tóc đen gợn sóng nhẹ chải gọn ra sau buộc nút thấp sau gáy; dải băng miện vải mảnh đơn giản màu nâu vàng đất nhạt ngang trán, không đính ngọc hay mũ cao.",
+    "body": "Vóc dáng thanh niên trưởng thành cân đối, đứng thẳng khiêm cung, chân trần.",
+    "clothing": "Áo tunic tay dài màu ngà kem sáng, cổ tròn xẻ khe ngắn viền nâu đất mảnh ở cổ, cổ tay và gấu áo; thắt lưng vải màu nâu đất trầm buộc ngang eo; khăn choàng vải mỏng màu nâu đất ấm nhạt khoác qua vai trái buông dọc thân; quần dhoti màu kem ngà dài tới mắt cá chân. Không trang sức hay binh khí."
+  },
+  "keep": [
+    "Giữ khuôn mặt thanh niên trưởng thành chín chắn không râu, tóc đen gợn buộc nút thấp sau gáy và dải băng miện vải mảnh nâu vàng đất nhạt.",
+    "Giữ áo tunic ngà kem sáng viền nâu mảnh, thắt lưng nâu đất trầm, khăn nâu đất ấm nhạt qua vai trái, quần dhoti kem và chân trần.",
+    "Chất liệu chì màu 2D nét mảnh, thần thái điềm tĩnh khiêm cung trên nền giấy gần trắng."
+  ],
+  "can_vary": [
+    "Đứng, ngồi, quỳ hoặc chắp tay theo cảnh",
+    "Hướng nhìn và biểu cảm nhẹ phù hợp cảnh"
+  ],
+  "avoid": [
+    "Râu, ria mép hoặc nét trung niên như PASENADI_01",
+    "Mũ nhọn cao, ngọc lớn, trang sức, kiếm, trượng hoặc ngai vàng",
+    "Y tu sĩ hoặc tóc xoăn búi đỉnh đầu/dái tai dài như Đức Phật",
+    "Khẳng định diện mạo hoặc phục trang lịch sử đã xác minh"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "T56",
+    "draft": "drafts/character-BODHI_01-v1-a1",
+    "sha256": "a0c3f30ba135a17daf4159b177e7ed75170f5383e2e4025af758b1f781bb2550",
+    "note": "Thiết kế minh họa quy ước tạo trong tập T56 cho vương tử Bodhi; chỉ dùng ảnh phong cách gốc để gợi nét chì và nền giấy, không khẳng định diện mạo lịch sử."
+  },
+  "review_note": "Đã mở JPEG sau nén (1080x1440): vương tử trẻ trưởng thành đứng thẳng đủ thân chân trần, không râu, tóc đen gợn buộc nút thấp sau gáy, dải băng miện mảnh không ngọc, áo tunic ngà kem viền nâu mảnh, thắt lưng nâu đất trầm, khăn choàng nâu đất ấm nhạt qua vai trái và quần dhoti kem đúng mô tả, không chữ. Chưa được người dùng duyệt."
+}

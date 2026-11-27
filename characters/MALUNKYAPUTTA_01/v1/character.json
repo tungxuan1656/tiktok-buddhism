@@ -1,0 +1,44 @@
+{
+  "id": "MALUNKYAPUTTA_01",
+  "name": "Tôn giả Māluṅkyāputta (thiết kế minh họa)",
+  "aliases": [
+    "Māluṅkyāputta",
+    "Malunkyaputta",
+    "Tôn giả Māluṅkyāputta"
+  ],
+  "version": "v1",
+  "status": "generated",
+  "identity": {
+    "face": "Nam tu sĩ Nam Á khoảng 38–42 tuổi, da nâu ấm hơi sạm tự nhiên, khuôn mặt chữ điền vững chãi, trán rộng, lông mày đen hơi rậm thẳng trầm tư nghiêm nghị, mắt nâu sáng suy tư, sống mũi thẳng, môi khép điềm tĩnh; không râu/ria, tai bình thường.",
+    "hair": "Đầu cạo sạch trơn nhẵn, không tóc hoặc búi đỉnh đầu.",
+    "body": "Vóc dáng cân đối rắn rỏi vừa phải, vai thẳng tự nhiên, chân trần.",
+    "clothing": "Y tăng vải mộc màu nâu vàng đất nung ấm trầm (terracotta-ochre dịu) phủ vai trái và thân dưới dài gần cổ chân, vai phải và cánh tay phải để trần; không tay áo dài, không áo lót, không trang sức hay chuỗi hạt."
+  },
+  "keep": [
+    "Giữ gương mặt chữ điền trung niên sớm có lông mày rậm thẳng suy tư, tai bình thường, đầu cạo sạch không râu.",
+    "Giữ y tăng màu nâu vàng đất nung ấm trầm phủ vai trái, vai phải trần, không tay áo dài, chân trần.",
+    "Chất liệu chì màu 2D nét mảnh, biểu cảm điềm tĩnh nghiêm nghị tiết chế trên nền giấy gần trắng."
+  ],
+  "can_vary": [
+    "Đứng, ngồi, bước đi, chắp tay và tư thế tay tự nhiên",
+    "Hướng nhìn và biểu cảm nhẹ khi tư duy, thưa hỏi hoặc lắng nghe"
+  ],
+  "avoid": [
+    "Tóc xoăn búi đỉnh đầu hoặc dái tai dài như Đức Phật",
+    "Nếp nhăn già như TYKHEO_03/SARIPUTTA_01 hoặc y kín hai vai dài tay như TYKHEO_01",
+    "Râu, ria mép, trang sức, hào quang hoặc vật phụ ngoài yêu cầu",
+    "Khẳng định diện mạo lịch sử đã xác minh"
+  ],
+  "references": [
+    "reference.jpg"
+  ],
+  "provenance": {
+    "kind": "generated",
+    "model": "cx/gpt-image-2.6-flare",
+    "episode": "T52",
+    "draft": "drafts/character-MALUNKYAPUTTA_01-v1-a1",
+    "sha256": "deeca94d76c38c5b059fbd28770070f6250f254b16b3ee102b0132b35cf409a6",
+    "note": "Thiết kế minh họa quy ước tạo trong tập T52 cho Tôn giả Māluṅkyāputta; ảnh phong cách gốc chỉ gợi nét chì và nền giấy, không khẳng định diện mạo lịch sử."
+  },
+  "review_note": "Đã mở JPEG sau nén (1080x1440): một vị Tỳ kheo đứng đủ thân chân trần, đầu cạo sạch, tai bình thường, mặt chữ điền trung niên sớm lông mày thẳng trầm tư không râu, tay phải thả tự nhiên và tay trái đặt nhẹ trước bụng đủ 5 ngón, y nâu vàng đất nung ấm phủ vai trái để trần vai phải, nền giấy sạch không chữ. Chưa được người dùng duyệt."
+}
